@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>最適ステージ・予想時給計算機 v14</title>
+  <title>最適ステージ・予想時給計算機 v15</title>
   <style>
     :root {
       font-family: system-ui, "Noto Sans JP", sans-serif;
@@ -108,7 +108,7 @@
 <body>
 <main class="wrap">
   <section class="panel">
-    <h1>最適ステージ・予想時給計算機 <span class="version">v14</span></h1>
+    <h1>最適ステージ・予想時給計算機 <span class="version">v15</span></h1>
     <div class="muted">実測した討伐数・死亡数・長時間ジェム獲得量で補正し、ジェム・餌・総合効率でステージ1～75を比較します。</div>
   </section>
 
@@ -141,7 +141,7 @@
         <input id="premiumRate" type="number" min="0" max="100" step="any" value="25">
       </div>
     </div>
-    <p class="muted">餌は敵撃破時に基本5%でドロップ判定（カボチャイルドで+3ポイント）し、落ちた餌だけ高級化を別判定します（初期25%、アヤツリッチで+5ポイント）。入力内容はブラウザ内に自動保存します。</p>
+    <p class="muted">餌はステージ46以上で、敵撃破時に基本5%でドロップ判定（カボチャイルドで+3ポイント）し、落ちた餌だけ高級化を別判定します（初期25%、アヤツリッチで+5ポイント）。入力内容はブラウザ内に自動保存します。</p>
   </section>
 
   <section class="panel">
@@ -185,7 +185,7 @@
     <div id="feedPanel" class="hidden" role="tabpanel" aria-labelledby="feedTab">
       <p class="ranking-summary" id="feedSummary">—</p>
       <div class="actions" style="margin-bottom:12px">
-        <button id="toggleFeed">全75ステージを表示</button>
+        <button id="toggleFeed">全30ステージを表示</button>
       </div>
       <div style="overflow:auto">
         <table>
@@ -198,7 +198,7 @@
 
   <section class="panel">
     <h2>ジェム・餌 総合効率ランキング</h2>
-    <p class="note">ジェム効率と餌効率を同じ重さで評価します。どちらか一方だけが高いステージより、両方が高いステージを優先します。</p>
+    <p class="note">ジェム効率と餌効率を同じ重さで評価します。餌の対象はステージ46以上です。ステージ45以下はジェム情報だけを表示し、総合指数・餌比・餌/時は「—」になります。</p>
     <p class="ranking-summary" id="combinedSummary">—</p>
     <div class="actions" style="margin-bottom:12px">
       <button id="toggleCombined">全75ステージを表示</button>
@@ -222,11 +222,11 @@
 
   <section class="panel">
     <details>
-      <summary>v14の固定モデルを見る</summary>
+      <summary>v15の固定モデルを見る</summary>
       <p class="note">通常キャラは実効1.0秒/攻撃、伝説・幻は3秒/攻撃。敵は1体ごとに0.7回/秒の攻撃試行を行い、ランダム移動・射程・接触時間を含む実効命中率を35%としています。敵補充は3～5秒、味方復活は5秒、再標的化には1.5秒を使用します。</p>
       <p class="note">味方最大HP＝戦力×20、敵攻撃力＝敵HP÷20。回復は30秒ごとに生存者を最大HPの20%回復します。クビナイトは攻撃ごとに最大3体へ同じダメージを与えます。</p>
       <p class="note">ジェム報酬はステージ倍率1.30を基本とし、ステージ63より上は63・72の長時間測定に合うよう緩やかな実測補正を加えます。リバース倍率は3.5倍、スキル倍率と有効なジェム特性を共通倍率として反映します。</p>
-      <p class="note">餌は敵1体の撃破ごとに基本5%でドロップ判定を行い、カボチャイルド編成時は8%になります。餌が落ちた場合だけ高級化を判定し、入力した確率（初期25%）にアヤツリッチ編成時の5ポイントを加えます。</p>
+      <p class="note">餌はステージ46以上で、敵1体の撃破ごとに基本5%のドロップ判定を行い、カボチャイルド編成時は8%になります。餌が落ちた場合だけ高級化を判定し、入力した確率（初期25%）にアヤツリッチ編成時の5ポイントを加えます。</p>
     </details>
   </section>
 </main>
@@ -238,8 +238,8 @@
   const HP = [30,43,51.65,74.45,89.3,128.1,153.7,222.1,266.5,385,462,666.8,800.2,1150,1390,2000,2400,3460,4160,6000,7200,10360,12430,17880,21460,30870,37040,53290,63950,92000,110400,160790,192940,281000,337200,491100,589320,858280,1030000,1500000,1910000,2430000,3090000,3930000,5000000,6660000,8880000,11830000,15760000,21000000,26000000,37000000,44000000,63000000,75000000,111950000,133800000,188950000,222500000,333550000,392210000,574180000,681600000,999190000,1190000000,1740000000,2080000000,3050000000,3640000000,5350000000,6390000000,9420000000,11260000000,16610000000,19880000000];
   const UNITS = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
   const GEM_UNITS = [['QiD',48],['QD',45],['Td',42],['Dd',39],['Ud',36],['Dc',33],['No',30],['Oc',27],['Sp',24],['Sx',21],['Qi',18],['Qa',15],['T',12],['B',9],['M',6],['K',3]];
-  const STORAGE = 'stage-calculator-v14-20261119';
-  const OLD_STORAGES = ['stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
+  const STORAGE = 'stage-calculator-v15-20261119';
+  const OLD_STORAGES = ['stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
 
   const CHARACTERS = {
     none: { label: '特性なし', trait: 'none' },
@@ -615,15 +615,16 @@
       const result = estimate(stage, state.chars);
       const gemScore = result.kills * stageRewardFactor(stage);
       const hour = BASE_HOURLY * (gemScore / baseScore) * factor;
-      const foodHour = result.kills * 3600 * rates.dropRate;
+      const foodEligible = stage >= 46;
+      const foodHour = foodEligible ? result.kills * 3600 * rates.dropRate : 0;
       const premiumHour = foodHour * rates.premiumRate;
       const normalHour = foodHour - premiumHour;
-      return { stage, kills: result.kills, deaths: result.deaths, gemScore, hour, foodHour, premiumHour, normalHour };
+      return { stage, kills: result.kills, deaths: result.deaths, gemScore, hour, foodEligible, foodHour, premiumHour, normalHour };
     });
     const gemRows = [...stageRows].sort((a, b) => b.gemScore - a.gemScore || a.stage - b.stage);
-    const feedRows = [...stageRows].sort((a, b) => b.foodHour - a.foodHour || a.stage - b.stage);
+    const feedRows = stageRows.filter(row => row.foodEligible).sort((a, b) => b.foodHour - a.foodHour || a.stage - b.stage);
     const bestGem = gemRows[0], bestFeed = feedRows[0];
-    if (!bestGem || !bestFeed || bestGem.gemScore <= 0 || bestFeed.foodHour <= 0) {
+    if (!bestGem || bestGem.gemScore <= 0) {
       $('best').textContent = '—'; $('hour').textContent = '0 QD/時';
       $('bestSub').textContent = '討伐可能なステージなし'; $('hourSub').textContent = '1時間あたり';
       clearRankings();
@@ -632,9 +633,10 @@
     }
     const combinedRows = stageRows.map(row => {
       const gemRelative = row.gemScore / bestGem.gemScore;
-      const foodRelative = row.foodHour / bestFeed.foodHour;
+      if (!row.foodEligible) return { ...row, gemRelative, foodRelative: null, combined: null };
+      const foodRelative = bestFeed.foodHour > 0 ? row.foodHour / bestFeed.foodHour : 0;
       return { ...row, gemRelative, foodRelative, combined: Math.sqrt(gemRelative * foodRelative) };
-    }).sort((a, b) => b.combined - a.combined || a.stage - b.stage);
+    }).sort((a, b) => (b.combined ?? -1) - (a.combined ?? -1) || a.stage - b.stage);
     const bestCombined = combinedRows[0];
 
     $('best').textContent = String(bestGem.stage);
@@ -646,16 +648,20 @@
       <tr><td>${i + 1}</td><td>${row.stage}</td><td>${formatHourly(row.hour)}</td>
       <td>${targetValid && targetQD > 0 && row.hour > 0 ? duration(targetQD / row.hour) : '—'}</td>
       <td>${(row.gemScore / bestGem.gemScore * 100).toFixed(1)}%</td><td>${row.kills.toFixed(3)}</td></tr>`).join('');
-    $('feedRanking').innerHTML = feedRows.slice(0, showAllFeed ? 75 : 10).map((row, i) => `
+    $('feedRanking').innerHTML = feedRows.slice(0, showAllFeed ? 30 : 10).map((row, i) => `
       <tr><td>${i + 1}</td><td>${row.stage}</td><td>${formatCount(row.foodHour)}</td>
       <td>${formatCount(row.premiumHour)}</td><td>${formatCount(row.normalHour)}</td>
-      <td>${(row.foodHour / bestFeed.foodHour * 100).toFixed(1)}%</td><td>${row.kills.toFixed(3)}</td></tr>`).join('');
+      <td>${bestFeed.foodHour > 0 ? `${(row.foodHour / bestFeed.foodHour * 100).toFixed(1)}%` : '—'}</td><td>${row.kills.toFixed(3)}</td></tr>`).join('');
     $('combinedRanking').innerHTML = combinedRows.slice(0, showAllCombined ? 75 : 10).map((row, i) => `
-      <tr><td>${i + 1}</td><td>${row.stage}</td><td>${(row.combined * 100).toFixed(1)}</td>
-      <td>${(row.gemRelative * 100).toFixed(1)}%</td><td>${(row.foodRelative * 100).toFixed(1)}%</td>
-      <td>${formatHourly(row.hour)}</td><td>${formatCount(row.foodHour)}</td></tr>`).join('');
-    $('feedSummary').textContent = `最適ステージ${bestFeed.stage}：餌 ${formatCount(bestFeed.foodHour)}/時（高級 ${formatCount(bestFeed.premiumHour)}/時・通常 ${formatCount(bestFeed.normalHour)}/時）｜餌ドロップ率 ${(rates.dropRate * 100).toFixed(0)}%・高級化率 ${(rates.premiumRate * 100).toFixed(0)}%`;
-    $('combinedSummary').textContent = `総合最適ステージ${bestCombined.stage}：総合指数 ${(bestCombined.combined * 100).toFixed(1)}（ジェム比 ${(bestCombined.gemRelative * 100).toFixed(1)}%・餌比 ${(bestCombined.foodRelative * 100).toFixed(1)}%）`;
+      <tr><td>${i + 1}</td><td>${row.stage}</td><td>${row.foodEligible ? (row.combined * 100).toFixed(1) : '—'}</td>
+      <td>${(row.gemRelative * 100).toFixed(1)}%</td><td>${row.foodEligible ? `${(row.foodRelative * 100).toFixed(1)}%` : '—'}</td>
+      <td>${formatHourly(row.hour)}</td><td>${row.foodEligible ? formatCount(row.foodHour) : '—'}</td></tr>`).join('');
+    $('feedSummary').textContent = bestFeed.foodHour > 0
+      ? `対象：ステージ46～75｜最適ステージ${bestFeed.stage}：餌 ${formatCount(bestFeed.foodHour)}/時（高級 ${formatCount(bestFeed.premiumHour)}/時・通常 ${formatCount(bestFeed.normalHour)}/時）｜餌ドロップ率 ${(rates.dropRate * 100).toFixed(0)}%・高級化率 ${(rates.premiumRate * 100).toFixed(0)}%`
+      : `対象：ステージ46～75｜この編成では餌を獲得できる敵を倒せませんでした。`;
+    $('combinedSummary').textContent = bestCombined.combined > 0
+      ? `総合最適ステージ${bestCombined.stage}：総合指数 ${(bestCombined.combined * 100).toFixed(1)}（ジェム比 ${(bestCombined.gemRelative * 100).toFixed(1)}%・餌比 ${(bestCombined.foodRelative * 100).toFixed(1)}%）`
+      : 'ステージ46以上で餌を獲得できないため、総合最適ステージはありません。';
     setBusy(false);
   }
   function scheduleCompute() {
@@ -701,7 +707,7 @@
   });
   $('toggleFeed').addEventListener('click', () => {
     showAllFeed = !showAllFeed;
-    $('toggleFeed').textContent = showAllFeed ? '上位10ステージのみ表示' : '全75ステージを表示';
+    $('toggleFeed').textContent = showAllFeed ? '上位10ステージのみ表示' : '全30ステージを表示';
     compute();
   });
   $('toggleCombined').addEventListener('click', () => {
@@ -713,15 +719,15 @@
     if (!confirm('入力を初期状態に戻しますか？')) return;
     state = emptyState(); showAllGem = showAllFeed = showAllCombined = false;
     $('toggleGem').textContent = '全75ステージを表示';
-    $('toggleFeed').textContent = '全75ステージを表示';
+    $('toggleFeed').textContent = '全30ステージを表示';
     $('toggleCombined').textContent = '全75ステージを表示';
     selectRankingTab('gem');
     renderInputs(); save();
   });
   $('download').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify({ version: 14, ...state }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: 15, ...state }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob), a = document.createElement('a');
-    a.href = url; a.download = 'moncolle-calculator-v14-settings.json'; a.click();
+    a.href = url; a.download = 'moncolle-calculator-v15-settings.json'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('load').addEventListener('click', () => $('file').click());
