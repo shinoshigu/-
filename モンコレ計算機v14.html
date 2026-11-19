@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>最適ステージ・予想時給計算機 v14</title>
+  <style>
+    :root {
+      font-family: system-ui, "Noto Sans JP", sans-serif;
+      color: #182538;
+      background: #f3f6fa;
+      font-size: 16px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 22px 12px; }
+    .wrap { max-width: 960px; margin: auto; }
+    .panel {
+      background: #fff;
+      border: 1px solid #dce4ed;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 0 0 14px;
+      box-shadow: 0 2px 8px #1e304608;
+    }
+    h1 { font-size: 1.45rem; margin: 0 0 7px; }
+    h2 { font-size: 1.08rem; margin: 0 0 15px; }
+    .version { font-size: .8rem; color: #728398; }
+    .muted, .note { color: #576b80; font-size: .86rem; line-height: 1.65; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .field label { display: block; font-size: .88rem; font-weight: 650; margin-bottom: 5px; }
+    input, select {
+      width: 100%;
+      min-width: 0;
+      font: inherit;
+      padding: 10px 30px 10px 9px;
+      border: 1px solid #b9c8d7;
+      border-radius: 7px;
+      color: #182538;
+      background-color: #fff;
+    }
+    select {
+      appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, #66788e 50%), linear-gradient(135deg, #66788e 50%, transparent 50%);
+      background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+    }
+    input:focus, select:focus { outline: 2px solid #75a7e3; outline-offset: 1px; }
+    .chars { display: grid; gap: 9px; }
+    .char {
+      display: grid;
+      grid-template-columns: 70px minmax(90px, 1fr) 72px 110px minmax(230px, 1.8fr);
+      gap: 9px;
+      align-items: center;
+    }
+    .char .name { font-weight: 650; font-size: .9rem; }
+    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .stat { background: #eef5ff; border-radius: 9px; padding: 15px; }
+    .stat .value { font-size: 1.8rem; font-weight: 800; color: #1557a2; overflow-wrap: anywhere; }
+    .stat .value.smaller { font-size: 1.45rem; }
+    .stat .small { font-size: .8rem; color: #53667b; }
+    table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+    th, td { padding: 9px 7px; border-bottom: 1px solid #e4e9f0; text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    thead { background: #f3f6fb; }
+    tbody tr:first-child { background: #eaf3ff; font-weight: 700; }
+    .actions { display: flex; gap: 9px; flex-wrap: wrap; }
+    button {
+      font: inherit;
+      border: 1px solid #aabbd0;
+      background: #fff;
+      border-radius: 7px;
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+    button.primary { background: #175aa6; color: #fff; border-color: #175aa6; }
+    button:disabled { opacity: .55; cursor: wait; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid #dce4ed; }
+    .tab { border: 0; border-bottom: 3px solid transparent; border-radius: 7px 7px 0 0; color: #53667b; }
+    .tab[aria-selected="true"] { color: #1557a2; border-bottom-color: #1557a2; background: #eef5ff; font-weight: 700; }
+    .hidden { display: none; }
+    .ranking-summary { margin: 0 0 12px; padding: 10px 12px; border-radius: 7px; background: #f5f8fc; color: #42566d; font-size: .88rem; }
+    .warn { color: #a15b10; font-size: .86rem; min-height: 1.4em; }
+    .calibration {
+      border-left: 4px solid #4f83bf;
+      padding: 10px 12px;
+      background: #f5f9ff;
+      border-radius: 6px;
+    }
+    @media (max-width: 720px) {
+      .panel { padding: 15px; }
+      .char { grid-template-columns: 48px minmax(0, 1fr) 58px 95px; gap: 6px; }
+      .char [data-k="character"] { grid-column: 2 / -1; }
+      .char .name { font-size: .78rem; }
+      input, select { padding: 9px 26px 9px 6px; font-size: .88rem; }
+      .grid { grid-template-columns: 1fr 1fr; }
+      .stats { grid-template-columns: 1fr; }
+      .stat .value { font-size: 1.55rem; }
+    }
+    @media (max-width: 430px) {
+      body { padding: 10px 6px; }
+      .panel { padding: 12px; }
+      .grid { grid-template-columns: 1fr; }
+      th, td { padding: 8px 6px; }
+    }
+  </style>
+</head>
+<body>
+<main class="wrap">
+  <section class="panel">
+    <h1>最適ステージ・予想時給計算機 <span class="version">v14</span></h1>
+    <div class="muted">実測した討伐数・死亡数・長時間ジェム獲得量で補正し、ジェム・餌・総合効率でステージ1～75を比較します。</div>
+  </section>
+
+  <section class="panel">
+    <h2>7キャラの編成</h2>
+    <div class="chars" id="chars"></div>
+    <p class="muted">特性キャラを選ぶと効果を自動設定します。同じキャラを複数編成した場合、特性は1体分だけ有効です。クビナイトの3体同時攻撃だけは各個体で有効です。戦闘には全員が参加します。</p>
+  </section>
+
+  <section class="panel">
+    <h2>倍率・目標</h2>
+    <div class="grid">
+      <div class="field">
+        <label for="rebirth">リバース数</label>
+        <input id="rebirth" type="number" min="0" max="627" step="1" value="0">
+      </div>
+      <div class="field">
+        <label for="skill">ジェムスキル倍率（倍）</label>
+        <input id="skill" type="number" min="0" step="any" value="4.75">
+      </div>
+      <div class="field">
+        <label for="target">稼ぎたいジェム額</label>
+        <div style="display:flex;gap:8px">
+          <input id="target" type="number" min="0" step="any" value="0" placeholder="例：10" style="flex:1">
+          <select id="targetUnit" aria-label="目標額の単位" style="width:105px;flex:none"></select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="premiumRate">高級餌になる確率（%）</label>
+        <input id="premiumRate" type="number" min="0" max="100" step="any" value="25">
+      </div>
+    </div>
+    <p class="muted">餌は敵撃破時に基本5%でドロップ判定（カボチャイルドで+3ポイント）し、落ちた餌だけ高級化を別判定します（初期25%、アヤツリッチで+5ポイント）。入力内容はブラウザ内に自動保存します。</p>
+  </section>
+
+  <section class="panel">
+    <h2>計算結果</h2>
+    <div class="stats">
+      <div class="stat">
+        <div class="small">予測最適ステージ</div>
+        <div class="value" id="best">—</div>
+        <div class="small" id="bestSub">ステージ1～75から選択</div>
+      </div>
+      <div class="stat">
+        <div class="small">予想ジェム時給</div>
+        <div class="value smaller" id="hour">—</div>
+        <div class="small" id="hourSub">1時間あたり</div>
+      </div>
+    </div>
+    <p id="status" class="warn" role="status"></p>
+    <div class="note calibration">
+      基準：旧編成のステージ63（6時間20分で3.6QD）。ステージ72（実働約11時間59分30秒で5.5QD）も高ステージ補正に使用しています。戦闘内部値は、現在編成の実測「63＝50体/分・死亡0、65＝34体/分・死亡0、72＝29体/5分・死亡63」を基準に調整しています。
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>ステージ別効率ランキング</h2>
+    <div class="tabs" role="tablist" aria-label="効率ランキングの種類">
+      <button class="tab" id="gemTab" role="tab" aria-selected="true" aria-controls="gemPanel">ジェム効率</button>
+      <button class="tab" id="feedTab" role="tab" aria-selected="false" aria-controls="feedPanel">餌効率</button>
+    </div>
+    <div id="gemPanel" role="tabpanel" aria-labelledby="gemTab">
+      <div class="actions" style="margin-bottom:12px">
+        <button id="toggleGem">全75ステージを表示</button>
+        <button id="reset">入力を初期状態に戻す</button>
+      </div>
+      <div style="overflow:auto">
+        <table>
+          <thead><tr><th>順位</th><th>ステージ</th><th>予想時給</th><th>目標到達時間</th><th>最適比</th><th>討伐/秒</th></tr></thead>
+          <tbody id="gemRanking"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="feedPanel" class="hidden" role="tabpanel" aria-labelledby="feedTab">
+      <p class="ranking-summary" id="feedSummary">—</p>
+      <div class="actions" style="margin-bottom:12px">
+        <button id="toggleFeed">全75ステージを表示</button>
+      </div>
+      <div style="overflow:auto">
+        <table>
+          <thead><tr><th>順位</th><th>ステージ</th><th>餌/時</th><th>高級餌/時</th><th>通常餌/時</th><th>最適比</th><th>討伐/秒</th></tr></thead>
+          <tbody id="feedRanking"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>ジェム・餌 総合効率ランキング</h2>
+    <p class="note">ジェム効率と餌効率を同じ重さで評価します。どちらか一方だけが高いステージより、両方が高いステージを優先します。</p>
+    <p class="ranking-summary" id="combinedSummary">—</p>
+    <div class="actions" style="margin-bottom:12px">
+      <button id="toggleCombined">全75ステージを表示</button>
+    </div>
+    <div style="overflow:auto">
+      <table>
+        <thead><tr><th>順位</th><th>ステージ</th><th>総合指数</th><th>ジェム比</th><th>餌比</th><th>予想時給</th><th>餌/時</th></tr></thead>
+        <tbody id="combinedRanking"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>設定のバックアップ</h2>
+    <div class="actions">
+      <button class="primary" id="download">設定を保存（JSON）</button>
+      <button id="load">設定ファイルを読み込む</button>
+      <input type="file" id="file" accept=".json,application/json" hidden>
+    </div>
+  </section>
+
+  <section class="panel">
+    <details>
+      <summary>v14の固定モデルを見る</summary>
+      <p class="note">通常キャラは実効1.0秒/攻撃、伝説・幻は3秒/攻撃。敵は1体ごとに0.7回/秒の攻撃試行を行い、ランダム移動・射程・接触時間を含む実効命中率を35%としています。敵補充は3～5秒、味方復活は5秒、再標的化には1.5秒を使用します。</p>
+      <p class="note">味方最大HP＝戦力×20、敵攻撃力＝敵HP÷20。回復は30秒ごとに生存者を最大HPの20%回復します。クビナイトは攻撃ごとに最大3体へ同じダメージを与えます。</p>
+      <p class="note">ジェム報酬はステージ倍率1.30を基本とし、ステージ63より上は63・72の長時間測定に合うよう緩やかな実測補正を加えます。リバース倍率は3.5倍、スキル倍率と有効なジェム特性を共通倍率として反映します。</p>
+      <p class="note">餌は敵1体の撃破ごとに基本5%でドロップ判定を行い、カボチャイルド編成時は8%になります。餌が落ちた場合だけ高級化を判定し、入力した確率（初期25%）にアヤツリッチ編成時の5ポイントを加えます。</p>
+    </details>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const HP = [30,43,51.65,74.45,89.3,128.1,153.7,222.1,266.5,385,462,666.8,800.2,1150,1390,2000,2400,3460,4160,6000,7200,10360,12430,17880,21460,30870,37040,53290,63950,92000,110400,160790,192940,281000,337200,491100,589320,858280,1030000,1500000,1910000,2430000,3090000,3930000,5000000,6660000,8880000,11830000,15760000,21000000,26000000,37000000,44000000,63000000,75000000,111950000,133800000,188950000,222500000,333550000,392210000,574180000,681600000,999190000,1190000000,1740000000,2080000000,3050000000,3640000000,5350000000,6390000000,9420000000,11260000000,16610000000,19880000000];
+  const UNITS = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
+  const GEM_UNITS = [['QiD',48],['QD',45],['Td',42],['Dd',39],['Ud',36],['Dc',33],['No',30],['Oc',27],['Sp',24],['Sx',21],['Qi',18],['Qa',15],['T',12],['B',9],['M',6],['K',3]];
+  const STORAGE = 'stage-calculator-v14-20261119';
+  const OLD_STORAGES = ['stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
+
+  const CHARACTERS = {
+    none: { label: '特性なし', trait: 'none' },
+    nyarowin: { label: 'ニャロウィン（コイン+10%）', trait: 'coin' },
+    awakenedNyarowin: { label: '覚醒ニャロウィン（ジェム+10%）', trait: 'gem' },
+    kabochild: { label: 'カボチャイルド（餌+3%）', trait: 'feed' },
+    kyonshina: { label: 'キョンシーナ（コイン・ジェム+10%）', trait: 'both' },
+    yamata: { label: 'ヤマタノコロチ（BOSSキラー）', trait: 'boss' },
+    ayatsuritch: { label: 'アヤツリッチ（高級餌+5%）', trait: 'premium' },
+    doppa: { label: 'ドッパー（ボーナス図柄+3%）', trait: 'roulette' },
+    lovril: { label: 'ラブリル（30秒全体20%回復）', trait: 'heal' },
+    kubinight: { label: 'クビナイト（最大3体同時攻撃）', trait: 'multi' },
+  };
+  const OLD_TRAIT_TO_CHARACTER = {
+    none: 'none', gem: 'awakenedNyarowin', coin: 'nyarowin', both: 'kyonshina',
+    boss: 'yamata', feed: 'kabochild', premium: 'ayatsuritch', roulette: 'doppa',
+    heal: 'lovril', multi: 'kubinight',
+  };
+
+  const MODEL = {
+    normalPeriod: 1.0,
+    legendPeriod: 3,
+    enemyPeriod: 1 / 0.7,
+    enemyHitRate: 0.35,
+    replacementMin: 3,
+    replacementMax: 5,
+    revival: 5,
+    acquireDelay: 1.5,
+    seconds: 600,
+    runs: 6,
+  };
+
+  const emptyState = () => ({
+    chars: Array.from({ length: 7 }, () => ({ power: '0', unit: 'M', type: 'normal', character: 'none' })),
+    rebirth: '0', skill: '4.75', target: '0', targetUnit: 'QD', premiumRate: '25',
+  });
+
+  const baseline = {
+    chars: [
+      { power: '360.7', unit: 'M', type: 'normal', character: 'none' },
+      { power: '150.1', unit: 'M', type: 'normal', character: 'none' },
+      { power: '150.1', unit: 'M', type: 'normal', character: 'none' },
+      { power: '144.8', unit: 'M', type: 'normal', character: 'none' },
+      { power: '144.8', unit: 'M', type: 'normal', character: 'none' },
+      { power: '2.4', unit: 'M', type: 'legend', character: 'kyonshina' },
+      { power: '1.6', unit: 'M', type: 'legend', character: 'awakenedNyarowin' },
+    ],
+    rebirth: 61,
+    skill: 4.75,
+  };
+
+  function migrateCharacter(c) {
+    if (c && Object.hasOwn(CHARACTERS, c.character)) return c.character;
+    return OLD_TRAIT_TO_CHARACTER[c?.trait] || 'none';
+  }
+
+  function validate(obj) {
+    if (!obj || !Array.isArray(obj.chars) || obj.chars.length !== 7) throw Error('編成データが不正です');
+    const chars = obj.chars.map(c => {
+      if (!c || !Object.hasOwn(UNITS, c.unit) || !['normal','legend'].includes(c.type) || !Number.isFinite(Number(c.power)) || Number(c.power) < 0) {
+        throw Error('戦力データが不正です');
+      }
+      return { power: String(c.power), unit: c.unit, type: c.type, character: migrateCharacter(c) };
+    });
+    return {
+      chars,
+      rebirth: String(obj.rebirth ?? 0),
+      skill: String(obj.skill ?? 4.75),
+      target: String(obj.target ?? 0),
+      targetUnit: GEM_UNITS.some(([u]) => u === obj.targetUnit) ? obj.targetUnit : 'QD',
+      premiumRate: String(obj.premiumRate ?? 25),
+    };
+  }
+
+  let state = emptyState();
+  try {
+    const stored = localStorage.getItem(STORAGE) || OLD_STORAGES.map(key => localStorage.getItem(key)).find(Boolean);
+    if (stored) state = validate(JSON.parse(stored));
+  } catch (_) {}
+
+  const $ = id => document.getElementById(id);
+  const charsEl = $('chars');
+  const characterOptions = Object.entries(CHARACTERS).map(([id, c]) => `<option value="${id}">${c.label}</option>`).join('');
+  for (let i = 0; i < 7; i++) {
+    const row = document.createElement('div');
+    row.className = 'char';
+    row.innerHTML = `
+      <span class="name">キャラ${i + 1}</span>
+      <input type="number" min="0" step="any" aria-label="キャラ${i + 1}の戦力" data-i="${i}" data-k="power">
+      <select aria-label="キャラ${i + 1}の単位" data-i="${i}" data-k="unit"><option>K</option><option>M</option><option>B</option><option>T</option></select>
+      <select aria-label="キャラ${i + 1}のタイプ" data-i="${i}" data-k="type"><option value="normal">通常</option><option value="legend">伝説・幻</option></select>
+      <select aria-label="キャラ${i + 1}の特性キャラ" data-i="${i}" data-k="character">${characterOptions}</select>`;
+    charsEl.appendChild(row);
+  }
+  for (const [unit] of [...GEM_UNITS].reverse()) $('targetUnit').add(new Option(unit, unit));
+
+  function renderInputs() {
+    charsEl.querySelectorAll('[data-i]').forEach(el => { el.value = state.chars[Number(el.dataset.i)][el.dataset.k]; });
+    $('rebirth').value = state.rebirth;
+    $('skill').value = state.skill;
+    $('target').value = state.target;
+    $('targetUnit').value = state.targetUnit;
+    $('premiumRate').value = state.premiumRate;
+  }
+
+  function xorshift(seed) {
+    let x = seed >>> 0;
+    return () => {
+      x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+      return (x >>> 0) / 4294967296;
+    };
+  }
+
+  function traitFor(character) { return CHARACTERS[character]?.trait || 'none'; }
+  function uniqueActiveCharacters(chars) {
+    return new Set(chars.filter(c => Number(c.power) > 0 && c.character !== 'none').map(c => c.character));
+  }
+  function partyBonus(chars) {
+    const unique = uniqueActiveCharacters(chars);
+    let bonus = 0;
+    if (unique.has('awakenedNyarowin')) bonus++;
+    if (unique.has('kyonshina')) bonus++;
+    return bonus;
+  }
+  function foodRates(chars, basePremiumPercent) {
+    const unique = uniqueActiveCharacters(chars);
+    const dropRate = Math.min(1, 0.05 + (unique.has('kabochild') ? 0.03 : 0));
+    const premiumRate = Math.min(1, basePremiumPercent / 100 + (unique.has('ayatsuritch') ? 0.05 : 0));
+    return { dropRate, premiumRate };
+  }
+
+  function simulate(stage, party, seed, seconds) {
+    const H = HP[stage - 1];
+    const enemyDamage = H / 20;
+    const random = xorshift(seed);
+    const allies = party.map(c => {
+      const power = Number(c.power) * UNITS[c.unit];
+      return {
+        power, hp: power * 20, max: power * 20,
+        period: c.type === 'legend' ? MODEL.legendPeriod : MODEL.normalPeriod,
+        alive: power > 0, token: 0, pos: random() * 10,
+        target: -1, character: c.character, trait: traitFor(c.character),
+      };
+    });
+    const enemies = Array.from({ length: 7 }, () => ({ hp: H, alive: true, token: 0, target: -1, pos: random() * 10 }));
+    const heap = [];
+    const less = (a, b) => a.t < b.t || (a.t === b.t && a.type > b.type);
+    function add(t, type, id, token) {
+      let k = heap.length;
+      heap.push({ t, type, id, token });
+      while (k > 0) {
+        const p = (k - 1) >> 1;
+        if (!less(heap[k], heap[p])) break;
+        [heap[k], heap[p]] = [heap[p], heap[k]];
+        k = p;
+      }
+    }
+    function pop() {
+      const top = heap[0];
+      const last = heap.pop();
+      if (heap.length) {
+        heap[0] = last;
+        let k = 0;
+        while (true) {
+          const l = k * 2 + 1, r = l + 1;
+          let m = k;
+          if (l < heap.length && less(heap[l], heap[m])) m = l;
+          if (r < heap.length && less(heap[r], heap[m])) m = r;
+          if (m === k) break;
+          [heap[k], heap[m]] = [heap[m], heap[k]];
+          k = m;
+        }
+      }
+      return top;
+    }
+    function nearest(group, pos) {
+      let chosen = -1, distance = Infinity;
+      for (let i = 0; i < group.length; i++) {
+        if (!group[i].alive) continue;
+        const d = Math.abs(group[i].pos - pos);
+        if (d < distance) { distance = d; chosen = i; }
+      }
+      return chosen;
+    }
+    function activeHealer() {
+      return allies.some(a => a.alive && a.character === 'lovril');
+    }
+
+    for (let i = 0; i < allies.length; i++) {
+      if (!allies[i].alive) continue;
+      allies[i].target = nearest(enemies, allies[i].pos);
+      add(random() * allies[i].period, 0, i, 0);
+    }
+    for (let i = 0; i < enemies.length; i++) {
+      enemies[i].target = nearest(allies, enemies[i].pos);
+      add(random() * MODEL.enemyPeriod, 1, i, 0);
+    }
+    add(30, 4, 0, 0);
+
+    let kills = 0, deaths = 0;
+    while (heap.length) {
+      const event = pop();
+      const time = event.t;
+      if (time > seconds) break;
+
+      if (event.type === 0) {
+        const ally = allies[event.id];
+        if (event.token !== ally.token || !ally.alive) continue;
+        if (ally.target < 0 || !enemies[ally.target].alive) {
+          ally.pos = random() * 10;
+          ally.target = nearest(enemies, ally.pos);
+          add(time + MODEL.acquireDelay, 0, event.id, ally.token);
+          continue;
+        }
+        const candidates = enemies
+          .map((enemy, i) => ({ i, alive: enemy.alive, d: Math.abs(enemy.pos - ally.pos) }))
+          .filter(enemy => enemy.alive)
+          .sort((a, b) => a.d - b.d)
+          .slice(0, ally.trait === 'multi' ? 3 : 1);
+        for (const candidate of candidates) {
+          const enemy = enemies[candidate.i];
+          enemy.hp -= ally.power;
+          if (enemy.hp <= 0) {
+            kills++;
+            enemy.alive = false;
+            enemy.token++;
+            const replacement = MODEL.replacementMin + random() * (MODEL.replacementMax - MODEL.replacementMin);
+            add(time + replacement, 3, candidate.i, enemy.token);
+            if (ally.target === candidate.i) ally.target = -1;
+          }
+        }
+        add(time + ally.period, 0, event.id, ally.token);
+      } else if (event.type === 1) {
+        const enemy = enemies[event.id];
+        if (event.token !== enemy.token || !enemy.alive) continue;
+        if (enemy.target < 0 || !allies[enemy.target].alive) {
+          enemy.pos = random() * 10;
+          enemy.target = nearest(allies, enemy.pos);
+        }
+        if (enemy.target >= 0 && random() < MODEL.enemyHitRate) {
+          const ally = allies[enemy.target];
+          ally.hp -= enemyDamage;
+          if (ally.hp <= 0) {
+            deaths++;
+            ally.alive = false;
+            ally.hp = 0;
+            ally.token++;
+            add(time + MODEL.revival, 2, enemy.target, ally.token);
+          }
+        }
+        add(time + MODEL.enemyPeriod, 1, event.id, enemy.token);
+      } else if (event.type === 2) {
+        const ally = allies[event.id];
+        if (event.token !== ally.token) continue;
+        ally.alive = true;
+        ally.hp = ally.max;
+        ally.pos = random() * 10;
+        ally.target = nearest(enemies, ally.pos);
+        add(time + ally.period, 0, event.id, ally.token);
+      } else if (event.type === 3) {
+        const enemy = enemies[event.id];
+        if (event.token !== enemy.token) continue;
+        enemy.alive = true;
+        enemy.hp = H;
+        enemy.pos = random() * 10;
+        enemy.target = nearest(allies, enemy.pos);
+        add(time + MODEL.enemyPeriod, 1, event.id, enemy.token);
+      } else {
+        if (activeHealer()) {
+          for (const ally of allies) if (ally.alive) ally.hp = Math.min(ally.max, ally.hp + ally.max * 0.2);
+        }
+        add(time + 30, 4, 0, 0);
+      }
+    }
+    return { killsPerSecond: kills / seconds, deathsPerSecond: deaths / seconds };
+  }
+
+  function estimate(stage, party, runs = MODEL.runs, seconds = MODEL.seconds, salt = 0) {
+    let kills = 0, deaths = 0;
+    for (let i = 0; i < runs; i++) {
+      const seed = (stage * 2654435761 + (i + salt) * 1013904223) >>> 0;
+      const result = simulate(stage, party, seed, seconds);
+      kills += result.killsPerSecond;
+      deaths += result.deathsPerSecond;
+    }
+    return { kills: kills / runs, deaths: deaths / runs };
+  }
+
+  const BASE_HOURLY = 3.6 / (6 + 20 / 60);
+  const MEASURED_72_HOURLY = 5.5 / (12 - 0.5 / 60);
+  const base63 = estimate(63, baseline.chars).kills;
+  const base72 = estimate(72, baseline.chars).kills;
+  const rawMeasuredRatio = (base72 / base63) * Math.pow(1.3, 9);
+  const highStageStepCorrection = Math.pow((MEASURED_72_HOURLY / BASE_HOURLY) / rawMeasuredRatio, 1 / 9);
+
+  function stageRewardFactor(stage) {
+    const base = Math.pow(1.3, stage - 1);
+    return stage <= 63 ? base : base * Math.pow(highStageStepCorrection, stage - 63);
+  }
+  const baseScore = base63 * stageRewardFactor(63);
+
+  function formatHourly(n) {
+    if (!Number.isFinite(n)) return '—';
+    if (n === 0) return '0 QD/時';
+    const exponent = Math.log10(Math.abs(n)) + 45;
+    const found = GEM_UNITS.find(([, power]) => exponent >= power - 1e-10);
+    if (!found) return `${Number((n * 1e45).toPrecision(4)).toLocaleString('ja-JP')} ジェム/時`;
+    const [unit, power] = found;
+    const scaled = n * Math.pow(10, 45 - power);
+    return `${Number(scaled.toPrecision(4)).toLocaleString('ja-JP', { maximumFractionDigits: 9 })} ${unit}/時`;
+  }
+  function formatCount(n) {
+    if (!Number.isFinite(n)) return '—';
+    return Number(n.toPrecision(4)).toLocaleString('ja-JP', { maximumFractionDigits: 3 });
+  }
+  function duration(hours) {
+    if (!Number.isFinite(hours) || hours < 0) return '—';
+    if (hours === 0) return '0分';
+    if (hours > 1e9) return `${hours.toExponential(2)}時間`;
+    const minutes = Math.ceil(hours * 60);
+    if (minutes < 60) return `${minutes}分`;
+    const h = Math.floor(minutes / 60), m = minutes % 60;
+    return `${h.toLocaleString('ja-JP')}時間${m ? `${m}分` : ''}`;
+  }
+
+  let showAllGem = false, showAllFeed = false, showAllCombined = false;
+  let computeTimer = 0;
+  function setBusy(busy) {
+    $('toggleGem').disabled = busy;
+    $('toggleFeed').disabled = busy;
+    $('toggleCombined').disabled = busy;
+    $('reset').disabled = busy;
+  }
+  function clearRankings() {
+    $('gemRanking').innerHTML = '';
+    $('feedRanking').innerHTML = '';
+    $('combinedRanking').innerHTML = '';
+    $('feedSummary').textContent = '—';
+    $('combinedSummary').textContent = '—';
+  }
+  function compute() {
+    computeTimer = 0;
+    setBusy(true);
+    const r = Number(state.rebirth), skill = Number(state.skill);
+    const premiumInput = Number(state.premiumRate);
+    const hasPower = state.chars.some(c => Number(c.power) > 0);
+    const premiumValid = Number.isFinite(premiumInput) && premiumInput >= 0 && premiumInput <= 100;
+    const valid = hasPower && Number.isInteger(r) && r >= 0 && r <= 627 && Number.isFinite(skill) && skill > 0 && premiumValid;
+    const targetNumber = Number(state.target);
+    const targetExponent = GEM_UNITS.find(([unit]) => unit === state.targetUnit)?.[1] ?? 45;
+    const targetQD = targetNumber * Math.pow(10, targetExponent - 45);
+    const targetValid = Number.isFinite(targetNumber) && targetNumber >= 0 && Number.isFinite(targetQD);
+    if (!valid) {
+      $('best').textContent = '—'; $('hour').textContent = '—';
+      $('bestSub').textContent = 'ステージ1～75から選択'; $('hourSub').textContent = '1時間あたり';
+      clearRankings();
+      $('status').textContent = !hasPower ? 'キャラの戦力を1体以上入力すると計算します。'
+        : !premiumValid ? '高級餌になる確率は0～100%で入力してください。'
+        : 'リバース数は0～627の整数、スキル倍率は0より大きい数値を入力してください。';
+      setBusy(false); return;
+    }
+    const bonus = partyBonus(state.chars);
+    const rates = foodRates(state.chars, premiumInput);
+    const logFactor = (r - 61) * Math.log(3.5) + Math.log(skill / 4.75) + Math.log((1 + 0.1 * bonus) / 1.2);
+    const factor = Math.exp(logFactor);
+    if (!Number.isFinite(factor)) {
+      clearRankings();
+      $('status').textContent = '倍率が計算範囲を超えています。リバース数を小さくしてください。';
+      setBusy(false); return;
+    }
+    const stageRows = HP.map((_, index) => {
+      const stage = index + 1;
+      const result = estimate(stage, state.chars);
+      const gemScore = result.kills * stageRewardFactor(stage);
+      const hour = BASE_HOURLY * (gemScore / baseScore) * factor;
+      const foodHour = result.kills * 3600 * rates.dropRate;
+      const premiumHour = foodHour * rates.premiumRate;
+      const normalHour = foodHour - premiumHour;
+      return { stage, kills: result.kills, deaths: result.deaths, gemScore, hour, foodHour, premiumHour, normalHour };
+    });
+    const gemRows = [...stageRows].sort((a, b) => b.gemScore - a.gemScore || a.stage - b.stage);
+    const feedRows = [...stageRows].sort((a, b) => b.foodHour - a.foodHour || a.stage - b.stage);
+    const bestGem = gemRows[0], bestFeed = feedRows[0];
+    if (!bestGem || !bestFeed || bestGem.gemScore <= 0 || bestFeed.foodHour <= 0) {
+      $('best').textContent = '—'; $('hour').textContent = '0 QD/時';
+      $('bestSub').textContent = '討伐可能なステージなし'; $('hourSub').textContent = '1時間あたり';
+      clearRankings();
+      $('status').textContent = 'シミュレーション時間内に敵を倒せませんでした。';
+      setBusy(false); return;
+    }
+    const combinedRows = stageRows.map(row => {
+      const gemRelative = row.gemScore / bestGem.gemScore;
+      const foodRelative = row.foodHour / bestFeed.foodHour;
+      return { ...row, gemRelative, foodRelative, combined: Math.sqrt(gemRelative * foodRelative) };
+    }).sort((a, b) => b.combined - a.combined || a.stage - b.stage);
+    const bestCombined = combinedRows[0];
+
+    $('best').textContent = String(bestGem.stage);
+    $('bestSub').textContent = `討伐 ${bestGem.kills.toFixed(3)}体/秒・死亡 ${bestGem.deaths.toFixed(3)}回/秒`;
+    $('hour').textContent = formatHourly(bestGem.hour);
+    $('hourSub').textContent = `ステージ${bestGem.stage}での予測`;
+    $('status').textContent = targetValid ? '' : '目標額は0以上の数値を入力してください。';
+    $('gemRanking').innerHTML = gemRows.slice(0, showAllGem ? 75 : 10).map((row, i) => `
+      <tr><td>${i + 1}</td><td>${row.stage}</td><td>${formatHourly(row.hour)}</td>
+      <td>${targetValid && targetQD > 0 && row.hour > 0 ? duration(targetQD / row.hour) : '—'}</td>
+      <td>${(row.gemScore / bestGem.gemScore * 100).toFixed(1)}%</td><td>${row.kills.toFixed(3)}</td></tr>`).join('');
+    $('feedRanking').innerHTML = feedRows.slice(0, showAllFeed ? 75 : 10).map((row, i) => `
+      <tr><td>${i + 1}</td><td>${row.stage}</td><td>${formatCount(row.foodHour)}</td>
+      <td>${formatCount(row.premiumHour)}</td><td>${formatCount(row.normalHour)}</td>
+      <td>${(row.foodHour / bestFeed.foodHour * 100).toFixed(1)}%</td><td>${row.kills.toFixed(3)}</td></tr>`).join('');
+    $('combinedRanking').innerHTML = combinedRows.slice(0, showAllCombined ? 75 : 10).map((row, i) => `
+      <tr><td>${i + 1}</td><td>${row.stage}</td><td>${(row.combined * 100).toFixed(1)}</td>
+      <td>${(row.gemRelative * 100).toFixed(1)}%</td><td>${(row.foodRelative * 100).toFixed(1)}%</td>
+      <td>${formatHourly(row.hour)}</td><td>${formatCount(row.foodHour)}</td></tr>`).join('');
+    $('feedSummary').textContent = `最適ステージ${bestFeed.stage}：餌 ${formatCount(bestFeed.foodHour)}/時（高級 ${formatCount(bestFeed.premiumHour)}/時・通常 ${formatCount(bestFeed.normalHour)}/時）｜餌ドロップ率 ${(rates.dropRate * 100).toFixed(0)}%・高級化率 ${(rates.premiumRate * 100).toFixed(0)}%`;
+    $('combinedSummary').textContent = `総合最適ステージ${bestCombined.stage}：総合指数 ${(bestCombined.combined * 100).toFixed(1)}（ジェム比 ${(bestCombined.gemRelative * 100).toFixed(1)}%・餌比 ${(bestCombined.foodRelative * 100).toFixed(1)}%）`;
+    setBusy(false);
+  }
+  function scheduleCompute() {
+    clearTimeout(computeTimer);
+    $('status').textContent = '計算中…';
+    computeTimer = setTimeout(compute, 180);
+  }
+  function save() {
+    try { localStorage.setItem(STORAGE, JSON.stringify(state)); } catch (_) {}
+    scheduleCompute();
+  }
+
+  charsEl.addEventListener('input', event => {
+    const el = event.target;
+    if (el.dataset.i === undefined) return;
+    state.chars[Number(el.dataset.i)][el.dataset.k] = el.value;
+    save();
+  });
+  charsEl.addEventListener('change', event => {
+    const el = event.target;
+    if (el.dataset.i === undefined) return;
+    state.chars[Number(el.dataset.i)][el.dataset.k] = el.value;
+    save();
+  });
+  for (const id of ['rebirth','skill','target','targetUnit','premiumRate']) {
+    const el = $(id);
+    el.addEventListener('input', () => { state[id] = el.value; save(); });
+    el.addEventListener('change', () => { state[id] = el.value; save(); });
+  }
+  function selectRankingTab(tab) {
+    const gemSelected = tab === 'gem';
+    $('gemTab').setAttribute('aria-selected', String(gemSelected));
+    $('feedTab').setAttribute('aria-selected', String(!gemSelected));
+    $('gemPanel').classList.toggle('hidden', !gemSelected);
+    $('feedPanel').classList.toggle('hidden', gemSelected);
+  }
+  $('gemTab').addEventListener('click', () => selectRankingTab('gem'));
+  $('feedTab').addEventListener('click', () => selectRankingTab('feed'));
+  $('toggleGem').addEventListener('click', () => {
+    showAllGem = !showAllGem;
+    $('toggleGem').textContent = showAllGem ? '上位10ステージのみ表示' : '全75ステージを表示';
+    compute();
+  });
+  $('toggleFeed').addEventListener('click', () => {
+    showAllFeed = !showAllFeed;
+    $('toggleFeed').textContent = showAllFeed ? '上位10ステージのみ表示' : '全75ステージを表示';
+    compute();
+  });
+  $('toggleCombined').addEventListener('click', () => {
+    showAllCombined = !showAllCombined;
+    $('toggleCombined').textContent = showAllCombined ? '上位10ステージのみ表示' : '全75ステージを表示';
+    compute();
+  });
+  $('reset').addEventListener('click', () => {
+    if (!confirm('入力を初期状態に戻しますか？')) return;
+    state = emptyState(); showAllGem = showAllFeed = showAllCombined = false;
+    $('toggleGem').textContent = '全75ステージを表示';
+    $('toggleFeed').textContent = '全75ステージを表示';
+    $('toggleCombined').textContent = '全75ステージを表示';
+    selectRankingTab('gem');
+    renderInputs(); save();
+  });
+  $('download').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify({ version: 14, ...state }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = 'moncolle-calculator-v14-settings.json'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  $('load').addEventListener('click', () => $('file').click());
+  $('file').addEventListener('change', async event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    try { state = validate(JSON.parse(await file.text())); renderInputs(); save(); }
+    catch (error) { alert(`読み込みに失敗しました：${error.message}`); }
+    event.target.value = '';
+  });
+
+  renderInputs();
+  scheduleCompute();
+})();
+</script>
+</body>
+</html>
