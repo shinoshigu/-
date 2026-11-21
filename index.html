@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>最適ステージ・予想時給計算機 v16</title>
+  <title>最適ステージ・予想時給計算機 v17</title>
   <style>
     :root {
       font-family: system-ui, "Noto Sans JP", sans-serif;
@@ -49,11 +49,19 @@
     .chars { display: grid; gap: 9px; }
     .char {
       display: grid;
-      grid-template-columns: 70px minmax(90px, 1fr) 72px 110px minmax(230px, 1.8fr);
+      grid-template-columns: 70px 108px minmax(180px, 1.7fr) 105px 76px minmax(190px, 1.4fr);
       gap: 9px;
       align-items: center;
+      padding: 9px;
+      border: 1px solid #e3e9f0;
+      border-radius: 9px;
+      background: #fbfcfe;
     }
     .char .name { font-weight: 650; font-size: .9rem; }
+    .char .derived { font-size: .78rem; line-height: 1.45; color: #53667b; }
+    .manual-fields { display: grid; grid-template-columns: minmax(120px,1.4fr) minmax(80px,1fr) 70px minmax(80px,1fr) 70px minmax(150px,1.4fr); gap: 6px; grid-column: 2 / -1; }
+    .manual-fields > :last-child { grid-column: 1 / -1; }
+    .catalog-help { margin: 8px 0 0; }
     .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .stat { background: #eef5ff; border-radius: 9px; padding: 15px; }
     .stat .value { font-size: 1.8rem; font-weight: 800; color: #1557a2; overflow-wrap: anywhere; }
@@ -89,8 +97,11 @@
     }
     @media (max-width: 720px) {
       .panel { padding: 15px; }
-      .char { grid-template-columns: 48px minmax(0, 1fr) 58px 95px; gap: 6px; }
-      .char [data-k="character"] { grid-column: 2 / -1; }
+      .char { grid-template-columns: 48px 105px minmax(0, 1fr); gap: 6px; }
+      .char [data-k="mutation"], .char [data-k="level"], .char .derived { grid-column: 2 / -1; }
+      .manual-fields { grid-column: 2 / -1; grid-template-columns: minmax(0,1fr) 70px; }
+      .manual-fields > :first-child, .manual-fields > :nth-child(6), .manual-fields > :nth-child(7) { grid-column: 1 / -1; }
+      .manual-fields { grid-column: 2 / -1; grid-template-columns: 1fr 58px 1fr 58px; }
       .char .name { font-size: .78rem; }
       input, select { padding: 9px 26px 9px 6px; font-size: .88rem; }
       .grid { grid-template-columns: 1fr 1fr; }
@@ -108,14 +119,15 @@
 <body>
 <main class="wrap">
   <section class="panel">
-    <h1>最適ステージ・予想時給計算機 <span class="version">v16</span></h1>
+    <h1>最適ステージ・予想時給計算機 <span class="version">v17</span></h1>
     <div class="muted">実測した討伐数・死亡数・長時間ジェム獲得量で補正し、ジェム・餌・総合効率でステージ1～75を比較します。</div>
   </section>
 
   <section class="panel">
     <h2>7キャラの編成</h2>
     <div class="chars" id="chars"></div>
-    <p class="muted">特性キャラを選ぶと効果を自動設定します。同じキャラを複数編成した場合、通常は特性1体分だけ有効です。クビナイト・JK・キングニドラは例外で、各個体の特性がそれぞれ発動します。戦闘には全員が参加します。</p>
+    <p class="muted catalog-help">カテゴリ→キャラ→変異→レベルの順に選ぶと、Lv1図鑑値からHP・攻撃力・特性を自動設定します。通常はNo.または名前で検索できます。伝説のLv1図鑑画像は未登録のため、伝説を選ぶと手動入力になります。</p>
+    <p class="muted">同じ特性キャラを複数編成した場合、通常は特性1体分だけ有効です。クビナイト・JK・キングニドラは例外で、各個体の特性がそれぞれ発動します。ミコンとポンジャは両方を編成すると、2体とも真の力のLv1値（HP 200.9M・攻撃10M）へ切り替わります。</p>
   </section>
 
   <section class="panel">
@@ -227,9 +239,9 @@
 
   <section class="panel">
     <details>
-      <summary>v16の固定モデルを見る</summary>
+      <summary>v17の固定モデルを見る</summary>
       <p class="note">通常キャラは実効1.0秒/攻撃、伝説・幻は3秒/攻撃。敵は1体ごとに0.7回/秒の攻撃試行を行い、ランダム移動・射程・接触時間を含む実効命中率を35%としています。敵補充は3～5秒、味方復活は5秒、再標的化には1.5秒を使用します。</p>
-      <p class="note">味方最大HP＝戦力×20、敵攻撃力＝敵HP÷20。回復は30秒ごとに生存者を最大HPの20%回復します。クビナイトは攻撃ごとに最大3体へ同じダメージを与えます。</p>
+      <p class="note">図鑑キャラはLv1のHP・攻撃力へ「1＋0.05×(レベル−1)」を掛け、通常の変異は1/2/4/8倍、幻の変異は1/1.2/1.44倍で計算します。手動入力だけは従来どおりHP未入力時に攻撃力×20を使います。敵攻撃力＝敵HP÷20です。</p>
       <p class="note">ジェム報酬はステージ倍率1.30を基本とし、ステージ63より上は63・72の長時間測定に合うよう緩やかな実測補正を加えます。リバース倍率は3.5倍、スキル倍率と有効なジェム特性を共通倍率として反映します。</p>
       <p class="note">餌はステージ46以上で、敵1体の撃破ごとに基本5%のドロップ判定を行い、カボチャイルド編成時は8%になります。餌が落ちた場合だけ高級化を判定し、入力した確率（初期25%）にアヤツリッチ編成時の5ポイントを加えます。</p>
       <p class="note">JKは通常敵に対して各JK本人の敵ごとの初撃だけ2倍、BOSS選択時は各JKにつき味方全員への敵の実効命中率を5ポイント下げます。BOSS固有のHP・攻撃力は未判明のため、敵タイプはJKの特性判定だけを切り替えます。</p>
@@ -245,8 +257,8 @@
   const HP = [30,43,51.65,74.45,89.3,128.1,153.7,222.1,266.5,385,462,666.8,800.2,1150,1390,2000,2400,3460,4160,6000,7200,10360,12430,17880,21460,30870,37040,53290,63950,92000,110400,160790,192940,281000,337200,491100,589320,858280,1030000,1500000,1910000,2430000,3090000,3930000,5000000,6660000,8880000,11830000,15760000,21000000,26000000,37000000,44000000,63000000,75000000,111950000,133800000,188950000,222500000,333550000,392210000,574180000,681600000,999190000,1190000000,1740000000,2080000000,3050000000,3640000000,5350000000,6390000000,9420000000,11260000000,16610000000,19880000000];
   const UNITS = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
   const GEM_UNITS = [['QiD',48],['QD',45],['Td',42],['Dd',39],['Ud',36],['Dc',33],['No',30],['Oc',27],['Sp',24],['Sx',21],['Qi',18],['Qa',15],['T',12],['B',9],['M',6],['K',3]];
-  const STORAGE = 'stage-calculator-v16-20261121';
-  const OLD_STORAGES = ['stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
+  const STORAGE = 'stage-calculator-v17-20261121';
+  const OLD_STORAGES = ['stage-calculator-v16-20261121', 'stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
 
   const CHARACTERS = {
     none: { label: '特性なし', trait: 'none' },
@@ -261,11 +273,60 @@
     kubinight: { label: 'クビナイト（最大3体同時攻撃）', trait: 'multi' },
     jk: { label: 'JK（通常初撃2倍／BOSS全体回避+5%）', trait: 'jk' },
     kingNidra: { label: 'キングニドラ（30%で自身のダメージ1.5倍）', trait: 'kingNidra' },
+    mikon: { label: 'ミコン（ポンジャと同時編成で真の力）', trait: 'mikon' },
+    ponja: { label: 'ポンジャ（ミコンと同時編成で真の力）', trait: 'ponja' },
   };
   const OLD_TRAIT_TO_CHARACTER = {
     none: 'none', gem: 'awakenedNyarowin', coin: 'nyarowin', both: 'kyonshina',
     boss: 'yamata', feed: 'kabochild', premium: 'ayatsuritch', roulette: 'doppa',
     heal: 'lovril', multi: 'kubinight', jk: 'jk', kingNidra: 'kingNidra',
+  };
+
+  const NORMAL_CATALOG_DATA = [
+    [1,'カピト',60,3],[2,'ビジー',72,3.6],[3,'チラップ',86.4,4.3],[4,'ヴァミル',103.6,5.1],
+    [5,'ジャモ',124.4,6.2],[6,'スヌーリ',149.2,7.4],[7,'ノクスブー',179.1,8.9],[8,'モルビ',214.9,10.7],
+    [9,'ブルーマ',257.9,12.8],[10,'ミポラ',309.5,15.4],[11,'グルディン',371.5,18.5],[12,'モッシェル',445.8,22.2],
+    [13,'リブル',534.9,26.7],[14,'クライマイト',641.9,32],[15,'ノクスル',770.3,38.5],[16,'ラスキー',924.4,46.2],
+    [17,'ノワロン',1.1e3,55.4],[18,'グラセロス',1.3e3,66.5],[19,'タンコル',1.5e3,79.8],[20,'ウィズロ',1.9e3,95.8],
+    [21,'メルカ',2.3e3,115],[22,'ベリン',2.7e3,138],[23,'ラヴァロン',3.3e3,165.6],[24,'サブリクス',3.9e3,198.7],
+    [25,'グリンブル',4.7e3,238.4],[26,'ブロントル',5.7e3,286.1],[27,'ピリック',6.8e3,343.4],[28,'ズンビー',8.2e3,412.1],
+    [29,'ヴォルモラ',9.8e3,494.5],[30,'クラビッツ',11.8e3,593.4],[31,'ドラムボル',14.2e3,712.1],[32,'グラクモー',17e3,854.5],
+    [33,'リブラスク',20.5e3,1e3],[34,'ソルトート',24.6e3,1.2e3],[35,'シェルゴン',29.5e3,1.4e3],[36,'グラセル',35.4e3,1.7e3],
+    [37,'シンダー',42.5e3,2.1e3],[38,'フォスカ',51e3,2.5e3],[39,'ティクレイル',61.2e3,3e3],[40,'ブラヴォクス',73.4e3,3.6e3],
+    [41,'トレヴェン',88.1e3,4.4e3],[42,'オウリス',105.8e3,5.2e3],[43,'プルマイト',126.9e3,6.3e3],[44,'ガルプラ',152.3e3,7.6e3],
+    [45,'ユクル',182.8e3,9.1e3],[46,'マグジョー',219.4e3,10.9e3],[47,'カクトラ',263.3e3,13.1e3],[48,'カクリダー',315.9e3,15.7e3],
+    [49,'バストルフ',379.1e3,18.9e3],[50,'マグロン',455e3,22.7e3],[51,'ライムホーン',546e3,27.3e3],[52,'ヴェルスコル',655.2e3,32.7e3],
+    [53,'ウィスプラ',786.2e3,39.3e3],[54,'ヴィオルーン',943.5e3,47.1e3],[55,'カヌーガ',1.1e6,56.6e3],[56,'フロスタ',1.3e6,67.9e3],
+    [57,'ライゾルド',1.6e6,81.5e3],[58,'ルメロ',1.9e6,97.8e3],[59,'ルージオン',2.3e6,117.3e3],[60,'ノクティル',2.8e6,140.8e3],
+    [61,'グロヴァルク',3.3e6,169e3],[62,'メデュリクス',4e6,202.8e3],[63,'シャルドン',4.8e6,243.4e3],[64,'ボルドラム',5.8e6,292.1e3],
+    [65,'ドラクル',7e6,350.5e3],[66,'フロッゴ',8.4e6,420.6e3],[67,'バスティロン',10e6,504.7e3],[68,'パルフォーン',12.1e6,605.7e3],
+    [69,'ビーザー',14.5e6,726.8e3],[70,'ダスクリル',17.4e6,872.2e3],[71,'エンバーゴン',20.9e6,1e6],[72,'ラスビス',25.1e6,1.2e6],
+    [73,'イーゴルン',30.1e6,1.5e6],[74,'フロゼア',36.1e6,1.8e6],[75,'ドレッドラス',43.4e6,2.1e6],[76,'ルミドラ',52e6,2.6e6],
+    [77,'ボルケルン',62.5e6,3.1e6],[78,'アストラヴァ',75e6,3.7e6],[79,'ルセルヴァン',90e6,4.5e6],[80,'アンブリクス',108e6,5.4e6],
+  ];
+  const NORMAL_CATALOG = NORMAL_CATALOG_DATA.map(([no,name,hp,attack]) => ({ id:`n${String(no).padStart(2,'0')}`, no, name, hp, attack, category:'normal', type:'normal', character:'none' }));
+  const ILLUSION_CATALOG = [
+    { id:'nyarowin', name:'ニャロウィン', hp:3.6e6, attack:182e3, character:'nyarowin' },
+    { id:'awakenedNyarowin', name:'覚醒ニャロウィン', hp:22.5e6, attack:1.1e6, character:'awakenedNyarowin' },
+    { id:'kabochild', name:'カボチャイルド', hp:3.6e6, attack:182e3, character:'kabochild' },
+    { id:'kyonshina', name:'キョンシーナ', hp:32.4e6, attack:1.6e6, character:'kyonshina' },
+    { id:'yamata', name:'ヤマタノコロチ', hp:139.5e6, attack:6.9e6, character:'yamata' },
+    { id:'ayatsuritch', name:'アヤツリッチ', hp:200.9e6, attack:10e6, character:'ayatsuritch' },
+    { id:'mikon', name:'ミコン', hp:32.4e6, attack:1.6e6, character:'mikon' },
+    { id:'ponja', name:'ポンジャ', hp:32.4e6, attack:1.6e6, character:'ponja' },
+    { id:'kingNidra', name:'キングニドラ', hp:416.7e6, attack:20.8e6, character:'kingNidra' },
+    { id:'jk', name:'JK', hp:167.4e6, attack:8.3e6, character:'jk' },
+    { id:'gomera', name:'ゴメラ', hp:587.9e3, attack:29.3e3, character:'none' },
+    { id:'doppa', name:'ドッパー', hp:3.6e6, attack:182e3, character:'doppa' },
+    { id:'charlotte', name:'シャーロット', hp:22.5e6, attack:1.1e6, character:'none' },
+    { id:'lovril', name:'ラブリル', hp:139.5e6, attack:6.9e6, character:'lovril' },
+    { id:'kubinight', name:'クビナイト', hp:241.1e6, attack:12e6, character:'kubinight' },
+  ].map(c => ({ ...c, category:'illusion', type:'legend' }));
+  const CATALOG = [...NORMAL_CATALOG, ...ILLUSION_CATALOG];
+  const CATALOG_BY_ID = Object.fromEntries(CATALOG.map(c => [c.id, c]));
+  const MUTATIONS = {
+    normal: { normal:['ノーマル',1], shiny:['シャイニー',2], dark:['漆黒',4], rainbow:['レインボー',8] },
+    illusion: { normal:['無印',1], dark:['闇',1.2], awakened:['覚醒',1.44] },
   };
 
   const MODEL = {
@@ -281,20 +342,24 @@
     runs: 12,
   };
 
+  const emptyChar = () => ({
+    category:'normal', catalogId:'', mutation:'normal', level:'1',
+    manualName:'', manualAttack:'0', manualAttackUnit:'M', manualHp:'0', manualHpUnit:'M', manualType:'normal', manualCharacter:'none',
+  });
   const emptyState = () => ({
-    chars: Array.from({ length: 7 }, () => ({ power: '0', unit: 'M', type: 'normal', character: 'none' })),
+    chars: Array.from({ length: 7 }, emptyChar),
     rebirth: '0', skill: '4.75', target: '0', targetUnit: 'QD', premiumRate: '25', enemyType: 'normal',
   });
 
   const baseline = {
     chars: [
-      { power: '360.7', unit: 'M', type: 'normal', character: 'none' },
-      { power: '150.1', unit: 'M', type: 'normal', character: 'none' },
-      { power: '150.1', unit: 'M', type: 'normal', character: 'none' },
-      { power: '144.8', unit: 'M', type: 'normal', character: 'none' },
-      { power: '144.8', unit: 'M', type: 'normal', character: 'none' },
-      { power: '2.4', unit: 'M', type: 'legend', character: 'kyonshina' },
-      { power: '1.6', unit: 'M', type: 'legend', character: 'awakenedNyarowin' },
+      { power:360.7e6, hp:360.7e6*20, type:'normal', character:'none' },
+      { power:150.1e6, hp:150.1e6*20, type:'normal', character:'none' },
+      { power:150.1e6, hp:150.1e6*20, type:'normal', character:'none' },
+      { power:144.8e6, hp:144.8e6*20, type:'normal', character:'none' },
+      { power:144.8e6, hp:144.8e6*20, type:'normal', character:'none' },
+      { power:2.4e6, hp:2.4e6*20, type:'legend', character:'kyonshina' },
+      { power:1.6e6, hp:1.6e6*20, type:'legend', character:'awakenedNyarowin' },
     ],
     rebirth: 61,
     skill: 4.75,
@@ -305,14 +370,34 @@
     return OLD_TRAIT_TO_CHARACTER[c?.trait] || 'none';
   }
 
+  function normalizeChar(c) {
+    if (c && ['normal','legend','illusion','manual'].includes(c.category)) {
+      const level = Math.min(150, Math.max(1, Math.round(Number(c.level) || 1)));
+      const category = c.category;
+      const allowedMutation = MUTATIONS[category] || {};
+      const mutation = Object.hasOwn(allowedMutation, c.mutation) ? c.mutation : 'normal';
+      return {
+        ...emptyChar(), ...c, category, level:String(level), mutation,
+        catalogId: CATALOG_BY_ID[c.catalogId]?.category === category ? c.catalogId : '',
+        manualAttackUnit: Object.hasOwn(UNITS,c.manualAttackUnit) ? c.manualAttackUnit : 'M',
+        manualHpUnit: Object.hasOwn(UNITS,c.manualHpUnit) ? c.manualHpUnit : 'M',
+        manualType: ['normal','legend'].includes(c.manualType) ? c.manualType : (category === 'normal' ? 'normal' : 'legend'),
+        manualCharacter: Object.hasOwn(CHARACTERS,c.manualCharacter) ? c.manualCharacter : 'none',
+      };
+    }
+    if (!c || !Object.hasOwn(UNITS,c.unit) || !Number.isFinite(Number(c.power)) || Number(c.power) < 0) throw Error('戦力データが不正です');
+    const character = migrateCharacter(c);
+    return {
+      ...emptyChar(), category:'manual', manualName:CHARACTERS[character]?.label || '',
+      manualAttack:String(c.power), manualAttackUnit:c.unit,
+      manualHp:String(Number(c.power)*20), manualHpUnit:c.unit,
+      manualType:c.type === 'legend' ? 'legend' : 'normal', manualCharacter:character,
+    };
+  }
+
   function validate(obj) {
     if (!obj || !Array.isArray(obj.chars) || obj.chars.length !== 7) throw Error('編成データが不正です');
-    const chars = obj.chars.map(c => {
-      if (!c || !Object.hasOwn(UNITS, c.unit) || !['normal','legend'].includes(c.type) || !Number.isFinite(Number(c.power)) || Number(c.power) < 0) {
-        throw Error('戦力データが不正です');
-      }
-      return { power: String(c.power), unit: c.unit, type: c.type, character: migrateCharacter(c) };
-    });
+    const chars = obj.chars.map(normalizeChar);
     return {
       chars,
       rebirth: String(obj.rebirth ?? 0),
@@ -332,22 +417,82 @@
 
   const $ = id => document.getElementById(id);
   const charsEl = $('chars');
-  const characterOptions = Object.entries(CHARACTERS).map(([id, c]) => `<option value="${id}">${c.label}</option>`).join('');
-  for (let i = 0; i < 7; i++) {
-    const row = document.createElement('div');
-    row.className = 'char';
-    row.innerHTML = `
-      <span class="name">キャラ${i + 1}</span>
-      <input type="number" min="0" step="any" aria-label="キャラ${i + 1}の戦力" data-i="${i}" data-k="power">
-      <select aria-label="キャラ${i + 1}の単位" data-i="${i}" data-k="unit"><option>K</option><option>M</option><option>B</option><option>T</option></select>
-      <select aria-label="キャラ${i + 1}のタイプ" data-i="${i}" data-k="type"><option value="normal">通常</option><option value="legend">伝説・幻</option></select>
-      <select aria-label="キャラ${i + 1}の特性キャラ" data-i="${i}" data-k="character">${characterOptions}</select>`;
-    charsEl.appendChild(row);
-  }
+  const characterOptions = Object.entries(CHARACTERS).map(([id,c]) => `<option value="${id}">${c.label}</option>`).join('');
   for (const [unit] of [...GEM_UNITS].reverse()) $('targetUnit').add(new Option(unit, unit));
 
+  function catalogLabel(c) { return c.category === 'normal' ? `No.${String(c.no).padStart(2,'0')} ${c.name}` : c.name; }
+  function formatStat(n) {
+    if (!Number.isFinite(n) || n <= 0) return '0';
+    const units = [['T',1e12],['B',1e9],['M',1e6],['K',1e3]];
+    const found = units.find(([,v]) => n >= v);
+    if (!found) return Number(n.toPrecision(5)).toLocaleString('ja-JP',{maximumFractionDigits:3});
+    return `${Number((n/found[1]).toPrecision(4)).toLocaleString('ja-JP',{maximumFractionDigits:3})}${found[0]}`;
+  }
+  function mutationMultiplier(c) { return MUTATIONS[c.category]?.[c.mutation]?.[1] || 1; }
+  function resolveParty(chars) {
+    const hasMikon = chars.some(c => c.category === 'illusion' && c.catalogId === 'mikon');
+    const hasPonja = chars.some(c => c.category === 'illusion' && c.catalogId === 'ponja');
+    return chars.map(c => {
+      const entry = CATALOG_BY_ID[c.catalogId];
+      const levelMultiplier = 1 + 0.05 * ((Number(c.level) || 1) - 1);
+      if (entry && entry.category === c.category) {
+        const truePair = hasMikon && hasPonja && (entry.id === 'mikon' || entry.id === 'ponja');
+        const baseHp = truePair ? 200.9e6 : entry.hp;
+        const baseAttack = truePair ? 10e6 : entry.attack;
+        const multiplier = levelMultiplier * mutationMultiplier(c);
+        return { power:baseAttack*multiplier, hp:baseHp*multiplier, type:entry.type, character:entry.character, name:entry.name, truePair };
+      }
+      if (c.category === 'normal' || c.category === 'illusion') {
+        return { power:0, hp:0, type:c.category === 'normal' ? 'normal' : 'legend', character:'none', name:'未選択', truePair:false };
+      }
+      const attack = Math.max(0,Number(c.manualAttack)||0) * (UNITS[c.manualAttackUnit]||1);
+      const enteredHp = Math.max(0,Number(c.manualHp)||0) * (UNITS[c.manualHpUnit]||1);
+      const hp = (enteredHp || attack*20) * levelMultiplier;
+      return { power:attack*levelMultiplier, hp, type:c.category === 'normal' ? 'normal' : c.category === 'illusion' || c.category === 'legend' ? 'legend' : c.manualType, character:c.manualCharacter||'none', name:c.manualName||'手動入力', truePair:false };
+    });
+  }
+  function derivedHtml(r) {
+    const trait = CHARACTERS[r.character]?.label || '特性なし';
+    return `HP ${formatStat(r.hp)}<br>攻撃 ${formatStat(r.power)}<br>${r.truePair?'真の力｜':''}${trait}`;
+  }
+  function updateDerivedRows() {
+    const resolved = resolveParty(state.chars);
+    charsEl.querySelectorAll('[data-derived]').forEach(el => { el.innerHTML = derivedHtml(resolved[Number(el.dataset.derived)]); });
+  }
+  function renderCharacterRows() {
+    const resolved = resolveParty(state.chars);
+    charsEl.innerHTML = state.chars.map((c,i) => {
+      const entries = c.category === 'normal' ? NORMAL_CATALOG : c.category === 'illusion' ? ILLUSION_CATALOG : [];
+      const entry = CATALOG_BY_ID[c.catalogId];
+      const searchValue = entry ? catalogLabel(entry) : '';
+      const catalogField = entries.length ? `<input type="search" list="catalog-${i}" value="${searchValue}" placeholder="名前・No.で検索" aria-label="キャラ${i+1}のキャラ名" data-i="${i}" data-role="catalog"><datalist id="catalog-${i}">${entries.map(e=>`<option value="${catalogLabel(e)}"></option>`).join('')}</datalist>`
+        : `<input value="${c.category === 'legend' ? '伝説図鑑値は手動入力' : '手動入力'}" aria-label="キャラ${i+1}の入力方式" disabled>`;
+      const mutations = MUTATIONS[c.category];
+      const mutationField = mutations ? `<select aria-label="キャラ${i+1}の変異" data-i="${i}" data-k="mutation">${Object.entries(mutations).map(([id,[label]])=>`<option value="${id}" ${c.mutation===id?'selected':''}>${label}</option>`).join('')}</select>` : `<span></span>`;
+      const manual = !entry && (c.category === 'legend' || c.category === 'manual');
+      const manualFields = manual ? `<div class="manual-fields">
+        <input value="${c.manualName||''}" placeholder="キャラ名（任意）" aria-label="キャラ${i+1}の手動名" data-i="${i}" data-k="manualName">
+        <input type="number" min="0" step="any" value="${c.manualAttack}" placeholder="Lv1攻撃" aria-label="キャラ${i+1}のLv1攻撃力" data-i="${i}" data-k="manualAttack">
+        <select aria-label="キャラ${i+1}の攻撃単位" data-i="${i}" data-k="manualAttackUnit">${Object.keys(UNITS).map(u=>`<option ${c.manualAttackUnit===u?'selected':''}>${u}</option>`).join('')}</select>
+        <input type="number" min="0" step="any" value="${c.manualHp}" placeholder="Lv1 HP" aria-label="キャラ${i+1}のLv1 HP" data-i="${i}" data-k="manualHp">
+        <select aria-label="キャラ${i+1}のHP単位" data-i="${i}" data-k="manualHpUnit">${Object.keys(UNITS).map(u=>`<option ${c.manualHpUnit===u?'selected':''}>${u}</option>`).join('')}</select>
+        <select aria-label="キャラ${i+1}の攻撃間隔" data-i="${i}" data-k="manualType"><option value="normal" ${c.manualType==='normal'?'selected':''}>通常（1秒）</option><option value="legend" ${c.manualType==='legend'?'selected':''}>伝説・幻（3秒）</option></select>
+        <select aria-label="キャラ${i+1}の手動特性" data-i="${i}" data-k="manualCharacter">${characterOptions.replace(`value="${c.manualCharacter}"`,`value="${c.manualCharacter}" selected`)}</select>
+      </div>` : '';
+      const r = resolved[i];
+      return `<div class="char">
+        <span class="name">キャラ${i+1}</span>
+        <select aria-label="キャラ${i+1}のカテゴリ" data-i="${i}" data-k="category"><option value="normal" ${c.category==='normal'?'selected':''}>通常</option><option value="legend" ${c.category==='legend'?'selected':''}>伝説</option><option value="illusion" ${c.category==='illusion'?'selected':''}>幻</option><option value="manual" ${c.category==='manual'?'selected':''}>手動</option></select>
+        ${catalogField}${mutationField}
+        <input type="number" min="1" max="150" step="1" value="${c.level}" aria-label="キャラ${i+1}のレベル" data-i="${i}" data-k="level">
+        <div class="derived" data-derived="${i}">${derivedHtml(r)}</div>
+        ${manualFields}
+      </div>`;
+    }).join('');
+  }
+
   function renderInputs() {
-    charsEl.querySelectorAll('[data-i]').forEach(el => { el.value = state.chars[Number(el.dataset.i)][el.dataset.k]; });
+    renderCharacterRows();
     $('rebirth').value = state.rebirth;
     $('skill').value = state.skill;
     $('target').value = state.target;
@@ -390,9 +535,10 @@
     const activeJkCount = party.filter(c => Number(c.power) > 0 && c.character === 'jk').length;
     const enemyHitChance = Math.max(0, MODEL.enemyHitRate - (enemyType === 'boss' ? activeJkCount * 0.05 : 0));
     const allies = party.map(c => {
-      const power = Number(c.power) * UNITS[c.unit];
+      const power = Number(c.power) || 0;
+      const maxHp = Number(c.hp) || power * 20;
       return {
-        power, hp: power * 20, max: power * 20,
+        power, hp:maxHp, max:maxHp,
         period: c.type === 'legend' ? MODEL.legendPeriod : MODEL.normalPeriod,
         alive: power > 0, token: 0, pos: random() * 10,
         target: -1, character: c.character, trait: traitFor(c.character),
@@ -641,7 +787,8 @@
     setBusy(true);
     const r = Number(state.rebirth), skill = Number(state.skill);
     const premiumInput = Number(state.premiumRate);
-    const hasPower = state.chars.some(c => Number(c.power) > 0);
+    const party = resolveParty(state.chars);
+    const hasPower = party.some(c => Number(c.power) > 0);
     const premiumValid = Number.isFinite(premiumInput) && premiumInput >= 0 && premiumInput <= 100;
     const valid = hasPower && Number.isInteger(r) && r >= 0 && r <= 627 && Number.isFinite(skill) && skill > 0 && premiumValid;
     const targetNumber = Number(state.target);
@@ -657,8 +804,8 @@
         : 'リバース数は0～627の整数、スキル倍率は0より大きい数値を入力してください。';
       setBusy(false); return;
     }
-    const bonus = partyBonus(state.chars);
-    const rates = foodRates(state.chars, premiumInput);
+    const bonus = partyBonus(party);
+    const rates = foodRates(party, premiumInput);
     const logFactor = (r - 61) * Math.log(3.5) + Math.log(skill / 4.75) + Math.log((1 + 0.1 * bonus) / 1.2);
     const factor = Math.exp(logFactor);
     if (!Number.isFinite(factor)) {
@@ -668,7 +815,7 @@
     }
     const stageRows = HP.map((_, index) => {
       const stage = index + 1;
-      const result = estimate(stage, state.chars, MODEL.runs, MODEL.seconds, 0, state.enemyType);
+      const result = estimate(stage, party, MODEL.runs, MODEL.seconds, 0, state.enemyType);
       const gemScore = result.kills * stageRewardFactor(stage);
       const hour = BASE_HOURLY * (gemScore / baseScore) * factor;
       const foodEligible = stage >= 46;
@@ -699,8 +846,8 @@
     $('bestSub').textContent = `討伐 ${bestGem.kills.toFixed(3)}体/秒・死亡 ${bestGem.deaths.toFixed(3)}回/秒`;
     $('hour').textContent = formatHourly(bestGem.hour);
     $('hourSub').textContent = `ステージ${bestGem.stage}での予測`;
-    const activeJkCount = state.chars.filter(c => Number(c.power) > 0 && c.character === 'jk').length;
-    const activeKingNidraCount = state.chars.filter(c => Number(c.power) > 0 && c.character === 'kingNidra').length;
+    const activeJkCount = party.filter(c => Number(c.power) > 0 && c.character === 'jk').length;
+    const activeKingNidraCount = party.filter(c => Number(c.power) > 0 && c.character === 'kingNidra').length;
     const traitNotes = [];
     if (activeJkCount) {
       traitNotes.push(state.enemyType === 'boss'
@@ -745,13 +892,49 @@
   charsEl.addEventListener('input', event => {
     const el = event.target;
     if (el.dataset.i === undefined) return;
-    state.chars[Number(el.dataset.i)][el.dataset.k] = el.value;
+    if (el.dataset.role === 'catalog') {
+      const index = Number(el.dataset.i);
+      const c = state.chars[index];
+      const entries = c.category === 'normal' ? NORMAL_CATALOG : c.category === 'illusion' ? ILLUSION_CATALOG : [];
+      const query = el.value.trim().toLocaleLowerCase('ja-JP');
+      const exact = entries.find(entry => catalogLabel(entry).toLocaleLowerCase('ja-JP') === query || entry.name.toLocaleLowerCase('ja-JP') === query || entry.id === query);
+      if (exact) {
+        c.catalogId = exact.id;
+        renderCharacterRows();
+        save();
+      }
+      return;
+    }
+    if (!el.dataset.k) return;
+    const c = state.chars[Number(el.dataset.i)];
+    c[el.dataset.k] = el.dataset.k === 'level'
+      ? String(Math.min(150,Math.max(1,Math.round(Number(el.value)||1))))
+      : el.value;
+    updateDerivedRows();
     save();
   });
   charsEl.addEventListener('change', event => {
     const el = event.target;
     if (el.dataset.i === undefined) return;
-    state.chars[Number(el.dataset.i)][el.dataset.k] = el.value;
+    const index = Number(el.dataset.i);
+    const c = state.chars[index];
+    if (el.dataset.role === 'catalog') {
+      const entries = c.category === 'normal' ? NORMAL_CATALOG : c.category === 'illusion' ? ILLUSION_CATALOG : [];
+      const query = el.value.trim().toLocaleLowerCase('ja-JP');
+      const exact = entries.find(entry => catalogLabel(entry).toLocaleLowerCase('ja-JP') === query || entry.name.toLocaleLowerCase('ja-JP') === query || entry.id === query);
+      const partial = entries.filter(entry => catalogLabel(entry).toLocaleLowerCase('ja-JP').includes(query));
+      c.catalogId = (exact || (partial.length === 1 ? partial[0] : null))?.id || '';
+    } else if (el.dataset.k === 'category') {
+      c.category = el.value;
+      c.catalogId = '';
+      c.mutation = 'normal';
+      if (c.category === 'legend' || c.category === 'illusion') c.manualType = 'legend';
+      if (c.category === 'normal') c.manualType = 'normal';
+    } else if (el.dataset.k) {
+      c[el.dataset.k] = el.value;
+      if (el.dataset.k === 'level') c.level = String(Math.min(150,Math.max(1,Math.round(Number(el.value)||1))));
+    }
+    renderCharacterRows();
     save();
   });
   for (const id of ['rebirth','skill','target','targetUnit','premiumRate','enemyType']) {
@@ -793,9 +976,9 @@
     renderInputs(); save();
   });
   $('download').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify({ version: 16, ...state }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: 17, ...state }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob), a = document.createElement('a');
-    a.href = url; a.download = 'moncolle-calculator-v16-settings.json'; a.click();
+    a.href = url; a.download = 'moncolle-calculator-v17-settings.json'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('load').addEventListener('click', () => $('file').click());
