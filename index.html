@@ -49,7 +49,7 @@
     .chars { display: grid; gap: 9px; }
     .char {
       display: grid;
-      grid-template-columns: 70px 108px minmax(180px, 1.7fr) 105px 76px minmax(190px, 1.4fr);
+      grid-template-columns: 70px 108px minmax(170px, 1.7fr) 100px 150px minmax(180px, 1.4fr);
       gap: 9px;
       align-items: center;
       padding: 9px;
@@ -59,6 +59,11 @@
     }
     .char .name { font-weight: 650; font-size: .9rem; }
     .char .derived { font-size: .78rem; line-height: 1.45; color: #53667b; }
+    .growth-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .growth-fields.single { grid-template-columns: 1fr; }
+    .char-number { display: grid; gap: 3px; min-width: 0; }
+    .char-number > span { color: #53667b; font-size: .74rem; font-weight: 750; line-height: 1; }
+    .char-number input { padding: 8px 24px 8px 7px; }
     .manual-fields { display: grid; grid-template-columns: minmax(120px,1.4fr) minmax(80px,1fr) 70px minmax(80px,1fr) 70px minmax(150px,1.4fr); gap: 6px; grid-column: 2 / -1; }
     .manual-fields > :last-child { grid-column: 1 / -1; }
     .catalog-help { margin: 8px 0 0; }
@@ -98,7 +103,7 @@
     @media (max-width: 720px) {
       .panel { padding: 15px; }
       .char { grid-template-columns: 48px 105px minmax(0, 1fr); gap: 6px; }
-      .char [data-k="mutation"], .char [data-k="level"], .char .derived { grid-column: 2 / -1; }
+      .char [data-k="mutation"], .char .growth-fields, .char .derived { grid-column: 2 / -1; }
       .manual-fields { grid-column: 2 / -1; grid-template-columns: minmax(0,1fr) 70px; }
       .manual-fields > :first-child, .manual-fields > :nth-child(6), .manual-fields > :nth-child(7) { grid-column: 1 / -1; }
       .manual-fields { grid-column: 2 / -1; grid-template-columns: 1fr 58px 1fr 58px; }
@@ -126,7 +131,7 @@
   <section class="panel">
     <h2>7キャラの編成</h2>
     <div class="chars" id="chars"></div>
-    <p class="muted catalog-help">カテゴリ→キャラ→変異→レベルの順に選ぶと、Lv1図鑑値からHP・攻撃力・特性を自動設定します。通常はNo.または名前、伝説・幻は名前で検索できます。</p>
+    <p class="muted catalog-help">カテゴリ→キャラ→変異→Lv・凸の順に選ぶと、Lv1図鑑値からHP・攻撃力・特性を自動設定します。凸は伝説・幻だけに表示されます。通常はNo.または名前、伝説・幻は名前で検索できます。</p>
     <p class="muted">同じ特性キャラを複数編成した場合、通常は特性1体分だけ有効です。クビナイト・JK・キングニドラは例外で、各個体の特性がそれぞれ発動します。ミコンとポンジャは1対1の組ごとに、真の力のLv1値（HP 200.9M・攻撃10M）へ切り替わります。</p>
   </section>
 
@@ -241,7 +246,7 @@
     <details>
       <summary>v17.1の固定モデルを見る</summary>
       <p class="note">通常キャラは実効1.0秒/攻撃、伝説・幻は3秒/攻撃。敵は1体ごとに0.7回/秒の攻撃試行を行い、ランダム移動・射程・接触時間を含む実効命中率を35%としています。敵補充は3～5秒、味方復活は5秒、再標的化には1.5秒を使用します。</p>
-      <p class="note">図鑑キャラはLv1のHP・攻撃力へ「1＋0.05×(レベル−1)」を掛け、通常の変異は1/2/4/8倍、幻の変異は1/1.2/1.44倍で計算します。手動入力だけは従来どおりHP未入力時に攻撃力×20を使います。敵攻撃力＝敵HP÷20です。</p>
+      <p class="note">図鑑キャラはLv1のHP・攻撃力へ「1＋0.05×(レベル−1)」を掛け、通常の変異は1/2/4/8倍、幻の変異は1/1.2/1.44倍で計算します。伝説・幻はさらに「1＋0.05×凸数」を掛け、0凸の1倍から10凸の1.5倍まで反映します。手動入力だけは従来どおりHP未入力時に攻撃力×20を使います。敵攻撃力＝敵HP÷20です。</p>
       <p class="note">ジェム報酬はステージ倍率1.30を基本とし、ステージ63より上は63・72の長時間測定に合うよう緩やかな実測補正を加えます。リバース倍率は3.5倍、スキル倍率と有効なジェム特性を共通倍率として反映します。</p>
       <p class="note">餌はステージ46以上で、敵1体の撃破ごとに基本5%のドロップ判定を行い、カボチャイルド編成時は8%になります。餌が落ちた場合だけ高級化を判定し、入力した確率（初期25%）にアヤツリッチ編成時の5ポイントを加えます。</p>
       <p class="note">JKは通常敵に対して各JK本人の敵ごとの初撃だけ2倍、BOSS選択時は各JKにつき味方全員への敵の実効命中率を5ポイント下げます。BOSS固有のHP・攻撃力は未判明のため、敵タイプはJKの特性判定だけを切り替えます。</p>
@@ -345,7 +350,7 @@
   };
 
   const emptyChar = () => ({
-    category:'normal', catalogId:'', mutation:'normal', level:'1',
+    category:'normal', catalogId:'', mutation:'normal', level:'1', limitBreak:'0',
     manualName:'', manualAttack:'0', manualAttackUnit:'M', manualHp:'0', manualHpUnit:'M', manualType:'normal', manualCharacter:'none',
   });
   const emptyState = () => ({
@@ -375,12 +380,13 @@
   function normalizeChar(c) {
     if (c && ['normal','legend','illusion','manual'].includes(c.category)) {
       const level = Math.min(150, Math.max(1, Math.round(Number(c.level) || 1)));
+      const limitBreak = Math.min(10, Math.max(0, Math.round(Number(c.limitBreak) || 0)));
       const savedEntry = CATALOG_BY_ID[c.catalogId];
       const category = savedEntry?.category || c.category;
       const allowedMutation = MUTATIONS[category] || {};
       const mutation = Object.hasOwn(allowedMutation, c.mutation) ? c.mutation : 'normal';
       return {
-        ...emptyChar(), ...c, category, level:String(level), mutation,
+        ...emptyChar(), ...c, category, level:String(level), limitBreak:String(limitBreak), mutation,
         catalogId: CATALOG_BY_ID[c.catalogId]?.category === category ? c.catalogId : '',
         manualAttackUnit: Object.hasOwn(UNITS,c.manualAttackUnit) ? c.manualAttackUnit : 'M',
         manualHpUnit: Object.hasOwn(UNITS,c.manualHpUnit) ? c.manualHpUnit : 'M',
@@ -432,6 +438,11 @@
     return `${Number((n/found[1]).toPrecision(4)).toLocaleString('ja-JP',{maximumFractionDigits:3})}${found[0]}`;
   }
   function mutationMultiplier(c) { return MUTATIONS[c.category]?.[c.mutation]?.[1] || 1; }
+  function limitBreakMultiplier(c) {
+    return c.category === 'legend' || c.category === 'illusion'
+      ? 1 + 0.05 * Math.min(10, Math.max(0, Number(c.limitBreak) || 0))
+      : 1;
+  }
   function resolveParty(chars) {
     const mikonIndexes = chars.map((c,i) => c.category === 'legend' && c.catalogId === 'mikon' ? i : -1).filter(i => i >= 0);
     const ponjaIndexes = chars.map((c,i) => c.category === 'legend' && c.catalogId === 'ponja' ? i : -1).filter(i => i >= 0);
@@ -444,7 +455,7 @@
         const truePair = truePowerIndexes.has(index);
         const baseHp = truePair ? 200.9e6 : entry.hp;
         const baseAttack = truePair ? 10e6 : entry.attack;
-        const multiplier = levelMultiplier * mutationMultiplier(c);
+        const multiplier = levelMultiplier * mutationMultiplier(c) * limitBreakMultiplier(c);
         return { power:baseAttack*multiplier, hp:baseHp*multiplier, type:entry.type, character:entry.character, name:entry.name, truePair };
       }
       if (c.category === 'normal' || c.category === 'legend' || c.category === 'illusion') {
@@ -474,6 +485,11 @@
         : `<input value="手動入力" aria-label="キャラ${i+1}の入力方式" disabled>`;
       const mutations = MUTATIONS[c.category];
       const mutationField = mutations ? `<select aria-label="キャラ${i+1}の変異" data-i="${i}" data-k="mutation">${Object.entries(mutations).map(([id,[label]])=>`<option value="${id}" ${c.mutation===id?'selected':''}>${label}</option>`).join('')}</select>` : `<span></span>`;
+      const hasLimitBreak = c.category === 'legend' || c.category === 'illusion';
+      const growthFields = `<div class="growth-fields ${hasLimitBreak?'':'single'}">
+        <label class="char-number"><span>Lv</span><input type="number" min="1" max="150" step="1" value="${c.level}" aria-label="キャラ${i+1}のレベル" data-i="${i}" data-k="level"></label>
+        ${hasLimitBreak ? `<label class="char-number"><span>凸</span><input type="number" min="0" max="10" step="1" value="${c.limitBreak}" aria-label="キャラ${i+1}の凸数" data-i="${i}" data-k="limitBreak"></label>` : ''}
+      </div>`;
       const manual = c.category === 'manual';
       const manualFields = manual ? `<div class="manual-fields">
         <input value="${c.manualName||''}" placeholder="キャラ名（任意）" aria-label="キャラ${i+1}の手動名" data-i="${i}" data-k="manualName">
@@ -489,7 +505,7 @@
         <span class="name">キャラ${i+1}</span>
         <select aria-label="キャラ${i+1}のカテゴリ" data-i="${i}" data-k="category"><option value="normal" ${c.category==='normal'?'selected':''}>通常</option><option value="legend" ${c.category==='legend'?'selected':''}>伝説</option><option value="illusion" ${c.category==='illusion'?'selected':''}>幻</option><option value="manual" ${c.category==='manual'?'selected':''}>手動</option></select>
         ${catalogField}${mutationField}
-        <input type="number" min="1" max="150" step="1" value="${c.level}" aria-label="キャラ${i+1}のレベル" data-i="${i}" data-k="level">
+        ${growthFields}
         <div class="derived" data-derived="${i}">${derivedHtml(r)}</div>
         ${manualFields}
       </div>`;
@@ -914,7 +930,9 @@
     const c = state.chars[Number(el.dataset.i)];
     c[el.dataset.k] = el.dataset.k === 'level'
       ? String(Math.min(150,Math.max(1,Math.round(Number(el.value)||1))))
-      : el.value;
+      : el.dataset.k === 'limitBreak'
+        ? String(Math.min(10,Math.max(0,Math.round(Number(el.value)||0))))
+        : el.value;
     updateDerivedRows();
     save();
   });
@@ -938,6 +956,7 @@
     } else if (el.dataset.k) {
       c[el.dataset.k] = el.value;
       if (el.dataset.k === 'level') c.level = String(Math.min(150,Math.max(1,Math.round(Number(el.value)||1))));
+      if (el.dataset.k === 'limitBreak') c.limitBreak = String(Math.min(10,Math.max(0,Math.round(Number(el.value)||0))));
     }
     renderCharacterRows();
     save();
