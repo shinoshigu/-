@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>最適ステージ・予想時給計算機 v17.4</title>
+  <title>最適ステージ・予想時給計算機 v17.5</title>
   <style>
     :root {
       font-family: system-ui, "Noto Sans JP", sans-serif;
@@ -124,7 +124,7 @@
 <body>
 <main class="wrap">
   <section class="panel">
-    <h1>最適ステージ・予想時給計算機 <span class="version">v17.4</span></h1>
+    <h1>最適ステージ・予想時給計算機 <span class="version">v17.5</span></h1>
     <div class="muted">実測した討伐数・死亡数・長時間ジェム獲得量で補正し、ジェム・餌・総合効率でステージ1～75を比較します。</div>
   </section>
 
@@ -244,10 +244,11 @@
 
   <section class="panel">
     <details>
-      <summary>v17.4の固定モデルを見る</summary>
+      <summary>v17.5の固定モデルを見る</summary>
       <p class="note">通常キャラは実効1.0秒/攻撃、伝説・幻は3秒/攻撃。敵は1体ごとに0.7回/秒の攻撃試行を行い、ランダム移動・射程・接触時間を含む実効命中率を35%としています。敵補充は3～5秒、味方復活は5秒、再標的化には1.5秒を使用します。</p>
       <p class="note">通常キャラのLv1値は、No.nのHP＝60×1.2^(n−1)、攻撃力＝3×1.2^(n−1)で計算します。全キャラのLv倍率は「1＋0.05×(レベル−1)」、通常の変異は1/2/4/8倍、幻の変異は1/1.2/1.44倍です。伝説・幻はさらに「1＋0.05×凸数」を掛け、0凸の1倍から10凸の1.5倍まで反映します。手動入力だけはHP未入力時に攻撃力×20を使います。敵攻撃力＝敵HP÷20です。</p>
       <p class="note">ジェム報酬はステージ倍率1.30を基本とし、ステージ63より上は63・72の長時間測定に合うよう緩やかな実測補正を加えます。リバース倍率は3.5倍、スキル倍率と有効なジェム特性を共通倍率として反映します。ジェム+10%のチーム効果は対象キャラが複数いても1回だけです。</p>
+      <p class="note">次のリバースに必要なジェムは「10,000×5^現在のリバース数」で計算します。リバース数を変更すると目標額へ自動入力しますが、その後は目標額を自由に変更できます。</p>
       <p class="note">餌はステージ46以上で、敵1体の撃破ごとに基本5%のドロップ判定を行い、カボチャイルド編成時は8%になります。餌が落ちた場合だけ高級化を判定し、入力した確率（初期25%）にアヤツリッチ編成時の5ポイントを加えます。</p>
       <p class="note">JKは通常敵に対して各JK本人の敵ごとの初撃だけ2倍です。BOSS選択時は編成にJKが1体以上いれば、味方全員への敵の実効命中率を5ポイント下げます。このチーム効果は重複しません。BOSS固有のHP・攻撃力は未判明のため、敵タイプはJKの特性判定だけを切り替えます。</p>
       <p class="note">キングニドラは各個体が攻撃成立ごとに30%の独立抽選を行い、成功時は本人のダメージを1.5倍にします。特性抽選には戦闘挙動と別の固定乱数列を使い、12回の再現可能な試行を平均します。</p>
@@ -262,8 +263,8 @@
   const HP = [30,43,51.65,74.45,89.3,128.1,153.7,222.1,266.5,385,462,666.8,800.2,1150,1390,2000,2400,3460,4160,6000,7200,10360,12430,17880,21460,30870,37040,53290,63950,92000,110400,160790,192940,281000,337200,491100,589320,858280,1030000,1500000,1910000,2430000,3090000,3930000,5000000,6660000,8880000,11830000,15760000,21000000,26000000,37000000,44000000,63000000,75000000,111950000,133800000,188950000,222500000,333550000,392210000,574180000,681600000,999190000,1190000000,1740000000,2080000000,3050000000,3640000000,5350000000,6390000000,9420000000,11260000000,16610000000,19880000000];
   const UNITS = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
   const GEM_UNITS = [['QiD',48],['QD',45],['Td',42],['Dd',39],['Ud',36],['Dc',33],['No',30],['Oc',27],['Sp',24],['Sx',21],['Qi',18],['Qa',15],['T',12],['B',9],['M',6],['K',3]];
-  const STORAGE = 'stage-calculator-v17.4-20261122';
-  const OLD_STORAGES = ['stage-calculator-v17.3-20261122', 'stage-calculator-v17.2-20261121', 'stage-calculator-v17.1-20261121', 'stage-calculator-v17-20261121', 'stage-calculator-v16-20261121', 'stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
+  const STORAGE = 'stage-calculator-v17.5-20261123';
+  const OLD_STORAGES = ['stage-calculator-v17.4-20261122', 'stage-calculator-v17.3-20261122', 'stage-calculator-v17.2-20261121', 'stage-calculator-v17.1-20261121', 'stage-calculator-v17-20261121', 'stage-calculator-v16-20261121', 'stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
 
   const CHARACTERS = {
     none: { label: '特性なし', trait: 'none' },
@@ -776,6 +777,23 @@
     const scaled = n * Math.pow(10, 45 - power);
     return `${Number(scaled.toPrecision(4)).toLocaleString('ja-JP', { maximumFractionDigits: 9 })} ${unit}/時`;
   }
+  function nextRebirthTarget(rebirth) {
+    if (!Number.isInteger(rebirth) || rebirth < 0 || rebirth > 627) return null;
+    const exponent = 4 + rebirth * Math.log10(5);
+    const found = GEM_UNITS.find(([, power]) => exponent >= power - 1e-10) || GEM_UNITS[GEM_UNITS.length - 1];
+    const [unit, power] = found;
+    const amount = Math.pow(10, exponent - power);
+    if (!Number.isFinite(amount)) return null;
+    return { amount: String(Number(amount.toPrecision(7))), unit };
+  }
+  function autofillNextRebirthTarget() {
+    const nextTarget = nextRebirthTarget(Number(state.rebirth));
+    if (!nextTarget) return;
+    state.target = nextTarget.amount;
+    state.targetUnit = nextTarget.unit;
+    $('target').value = state.target;
+    $('targetUnit').value = state.targetUnit;
+  }
   function formatCount(n) {
     if (!Number.isFinite(n)) return '—';
     return Number(n.toPrecision(4)).toLocaleString('ja-JP', { maximumFractionDigits: 3 });
@@ -996,8 +1014,13 @@
   });
   for (const id of ['rebirth','skill','target','targetUnit','premiumRate','enemyType']) {
     const el = $(id);
-    el.addEventListener('input', () => { state[id] = el.value; save(); });
-    el.addEventListener('change', () => { state[id] = el.value; save(); });
+    const update = () => {
+      state[id] = el.value;
+      if (id === 'rebirth') autofillNextRebirthTarget();
+      save();
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
   }
   function selectRankingTab(tab) {
     const gemSelected = tab === 'gem';
@@ -1033,9 +1056,9 @@
     renderInputs(); save();
   });
   $('download').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify({ version: '17.4', ...state }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: '17.5', ...state }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob), a = document.createElement('a');
-    a.href = url; a.download = 'moncolle-calculator-v17.4-settings.json'; a.click();
+    a.href = url; a.download = 'moncolle-calculator-v17.5-settings.json'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('load').addEventListener('click', () => $('file').click());
