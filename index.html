@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>最適ステージ・予想時給計算機 v17.6</title>
+  <title>最適ステージ・予想時給計算機 v17.7</title>
   <style>
     :root {
       font-family: system-ui, "Noto Sans JP", sans-serif;
@@ -124,15 +124,15 @@
 <body>
 <main class="wrap">
   <section class="panel">
-    <h1>最適ステージ・予想時給計算機 <span class="version">v17.6</span></h1>
+    <h1>最適ステージ・予想時給計算機 <span class="version">v17.7</span></h1>
     <div class="muted">実測した討伐数・死亡数・長時間ジェム獲得量で補正し、ジェム・餌・総合効率でステージ1～75を比較します。</div>
   </section>
 
   <section class="panel">
     <h2>7キャラの編成</h2>
     <div class="chars" id="chars"></div>
-    <p class="muted catalog-help">カテゴリ→キャラ→変異→Lv・凸の順に選ぶと、Lv1図鑑値からHP・攻撃力・特性を自動設定します。凸は伝説・幻だけに表示されます。通常はNo.または名前、伝説・幻は名前で検索できます。</p>
-    <p class="muted">自分にのみ発動する特性は各個体ごと、チーム全体に加わる効果は重複せず1回だけ発動します。クビナイト・キングニドラと通常敵へのJK初撃は各個体、BOSS時のJK回避は編成に1体以上でチーム全体に+5ポイントです。ミコンとポンジャは1対1の組ごとに、真の力のLv1値（HP 200.9M・攻撃10M）へ切り替わります。</p>
+    <p class="muted catalog-help">カテゴリ→キャラ→変異→Lv・凸の順に選ぶと、Lv1図鑑値からHP・攻撃力・特性を自動設定します。凸は伝説・幻だけに表示されます。通常はNo.または名前、伝説・幻は名前で検索でき、キャラ名欄にマウスを合わせてホイールを回すと前後のキャラへ切り替えられます。</p>
+    <p class="muted">自分にのみ発動する特性は各個体ごと、チーム効果は重複せず1回だけ発動します。ラブリルは30秒ごとに味方全員を最大HPの20%回復し、BOSS時のJKは自チーム全員の回避率を+5%します。クビナイト・キングニドラと通常敵へのJK初撃は各個体に発動します。ミコンとポンジャは1対1の組ごとに、真の力のLv1値（HP 200.9M・攻撃10M）へ切り替わります。</p>
   </section>
 
   <section class="panel">
@@ -248,13 +248,15 @@
 
   <section class="panel">
     <details>
-      <summary>v17.6の固定モデルを見る</summary>
+      <summary>v17.7の固定モデルを見る</summary>
       <p class="note">通常キャラは実効1.0秒/攻撃、伝説・幻は3秒/攻撃。敵は1体ごとに0.7回/秒の攻撃試行を行い、ランダム移動・射程・接触時間を含む実効命中率を35%としています。敵補充は3～5秒、味方復活は5秒、再標的化には1.5秒を使用します。</p>
-      <p class="note">通常キャラのLv1値は、No.nのHP＝60×1.2^(n−1)、攻撃力＝3×1.2^(n−1)で計算します。全キャラのLv倍率は「1＋0.05×(レベル−1)」、通常の変異は1/2/4/8倍、幻の変異は1/1.2/1.44倍です。伝説・幻はさらに「1＋0.05×凸数」を掛け、0凸の1倍から10凸の1.5倍まで反映します。手動入力だけはHP未入力時に攻撃力×20を使います。敵攻撃力＝敵HP÷20です。</p>
+      <p class="note">通常キャラのLv1値は、No.nのHP＝60×1.2^(n−1)、攻撃力＝3×1.2^(n−1)で計算します。全キャラのLv倍率は「1＋0.05×(レベル−1)」、通常の変異は1/2/4/8倍、幻の変異は1/1.2/1.44倍です。伝説・幻はさらに「1＋0.05×凸数」をHP・攻撃力へ掛け、0凸の1倍から10凸の1.5倍まで反映します。BOSS時は各キャラへ凸数×2%の回避率も加え、10凸で20%になります。手動入力だけはHP未入力時に攻撃力×20を使います。敵攻撃力＝敵HP÷20です。</p>
       <p class="note">ジェム報酬はステージ倍率1.30を基本とし、ステージ63より上は63・72の長時間測定に合うよう緩やかな実測補正を加えます。リバース倍率は3.5倍、スキル倍率と有効なジェム特性を共通倍率として反映します。ジェム+10%のチーム効果は対象キャラが複数いても1回だけです。</p>
       <p class="note">次のリバースに必要なジェムは序盤の実測表に合わせ、0リバ＝500、1～4リバは8Kから毎回8倍、5リバ＝31.25M、以降は毎回5倍で計算します。リバース数を変更すると目標額へ自動入力しますが、その後は目標額を自由に変更できます。</p>
       <p class="note">餌はステージ46以上で、敵1体の撃破ごとに基本5%のドロップ判定を行い、カボチャイルド編成時は8%になります。餌が落ちた場合だけ高級化を判定し、入力した確率（初期25%）にアヤツリッチ編成時の5ポイントを加えます。</p>
-      <p class="note">JKは通常敵に対して各JK本人の敵ごとの初撃だけ2倍です。BOSS選択時は編成にJKが1体以上いれば、味方全員への敵の実効命中率を5ポイント下げます。このチーム効果は重複しません。BOSS固有のHP・攻撃力は未判明のため、敵タイプはJKの特性判定だけを切り替えます。</p>
+      <p class="note">BOSS戦は1人あたり最大3体を編成でき、最大4人で協力するため、レイド全体では最大12体です。現在のBOSS計算では入力欄の先頭3体を自分のチームとして扱い、未入力の他プレイヤー3人分は加算しません。</p>
+      <p class="note">ラブリルは生存している間、30秒ごとに味方全員をそれぞれの最大HPの20%分回復します。同じキャラでの重複はありません。通常計算では入力した7体、BOSS計算では現在入力できる自チーム3体を回復対象にします。BOSS実装後は他プレイヤーを含む最大12体へ拡張できるスコープとして内部定義しています。</p>
+      <p class="note">JKは通常敵に対して各JK本人の敵ごとの初撃だけ2倍です。BOSS選択時は自チームにJKが1体以上いれば、自チーム3体だけの回避率を5%加算します。他プレイヤーのチームには適用せず、同じ自チーム内で複数編成しても重複しません。BOSS戦はお互いの攻撃が必中になる前提で基礎命中率を100%とし、その後に凸・JKの回避率を独立判定します。BOSS固有のHP・攻撃力は未判明です。</p>
       <p class="note">キングニドラは各個体が攻撃成立ごとに30%の独立抽選を行い、成功時は本人のダメージを1.5倍にします。特性抽選には戦闘挙動と別の固定乱数列を使い、12回の再現可能な試行を平均します。</p>
     </details>
   </section>
@@ -267,8 +269,8 @@
   const HP = [30,43,51.65,74.45,89.3,128.1,153.7,222.1,266.5,385,462,666.8,800.2,1150,1390,2000,2400,3460,4160,6000,7200,10360,12430,17880,21460,30870,37040,53290,63950,92000,110400,160790,192940,281000,337200,491100,589320,858280,1030000,1500000,1910000,2430000,3090000,3930000,5000000,6660000,8880000,11830000,15760000,21000000,26000000,37000000,44000000,63000000,75000000,111950000,133800000,188950000,222500000,333550000,392210000,574180000,681600000,999190000,1190000000,1740000000,2080000000,3050000000,3640000000,5350000000,6390000000,9420000000,11260000000,16610000000,19880000000];
   const UNITS = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
   const GEM_UNITS = [['QiD',48],['QD',45],['Td',42],['Dd',39],['Ud',36],['Dc',33],['No',30],['Oc',27],['Sp',24],['Sx',21],['Qi',18],['Qa',15],['T',12],['B',9],['M',6],['K',3]];
-  const STORAGE = 'stage-calculator-v17.6-20261123';
-  const OLD_STORAGES = ['stage-calculator-v17.5-20261123', 'stage-calculator-v17.4-20261122', 'stage-calculator-v17.3-20261122', 'stage-calculator-v17.2-20261121', 'stage-calculator-v17.1-20261121', 'stage-calculator-v17-20261121', 'stage-calculator-v16-20261121', 'stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
+  const STORAGE = 'stage-calculator-v17.7-20261124';
+  const OLD_STORAGES = ['stage-calculator-v17.6-20261123', 'stage-calculator-v17.5-20261123', 'stage-calculator-v17.4-20261122', 'stage-calculator-v17.3-20261122', 'stage-calculator-v17.2-20261121', 'stage-calculator-v17.1-20261121', 'stage-calculator-v17-20261121', 'stage-calculator-v16-20261121', 'stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
 
   const CHARACTERS = {
     none: { label: '特性なし', trait: 'none' },
@@ -279,9 +281,9 @@
     yamata: { label: 'ヤマタノコロチ（BOSSキラー）', trait: 'boss' },
     ayatsuritch: { label: 'アヤツリッチ（高級餌+5%）', trait: 'premium' },
     doppa: { label: 'ドッパー（ボーナス図柄+3%）', trait: 'roulette' },
-    lovril: { label: 'ラブリル（30秒全体20%回復）', trait: 'heal' },
+    lovril: { label: 'ラブリル（30秒ごとに味方全員を最大HPの20%分回復）', trait: 'heal' },
     kubinight: { label: 'クビナイト（最大3体同時攻撃）', trait: 'multi' },
-    jk: { label: 'JK（通常初撃2倍／BOSS全体回避+5ポイント）', trait: 'jk' },
+    jk: { label: 'JK（通常初撃2倍／BOSS時は自チーム全員の回避率+5%）', trait: 'jk' },
     kingNidra: { label: 'キングニドラ（30%で自身のダメージ1.5倍）', trait: 'kingNidra' },
     mikon: { label: 'ミコン（ポンジャと同時編成で真の力）', trait: 'mikon' },
     ponja: { label: 'ポンジャ（ミコンと同時編成で真の力）', trait: 'ponja' },
@@ -355,6 +357,18 @@
     acquireDelay: 1.5,
     seconds: 600,
     runs: 12,
+  };
+  const BOSS_MODEL = {
+    charactersPerPlayer: 3,
+    maxPlayers: 4,
+    maxRaidCharacters: 12,
+    baseHitRate: 1,
+    dodgePerLimitBreak: 0.02,
+    jkOwnTeamDodge: 0.05,
+    effectScope: {
+      lovril: 'allAllies',
+      jk: 'ownTeam',
+    },
   };
 
   const emptyChar = () => ({
@@ -441,6 +455,9 @@
   for (const [unit] of [...GEM_UNITS].reverse()) $('targetUnit').add(new Option(unit, unit));
 
   function catalogLabel(c) { return c.category === 'normal' ? `No.${String(c.no).padStart(2,'0')} ${c.name}` : c.name; }
+  function catalogEntries(category) {
+    return category === 'normal' ? NORMAL_CATALOG : category === 'legend' ? LEGEND_CATALOG : category === 'illusion' ? ILLUSION_CATALOG : [];
+  }
   function formatStat(n) {
     if (!Number.isFinite(n) || n <= 0) return '0';
     const units = [['T',1e12],['B',1e9],['M',1e6],['K',1e3]];
@@ -449,11 +466,15 @@
     return `${Number((n/found[1]).toPrecision(4)).toLocaleString('ja-JP',{maximumFractionDigits:3})}${found[0]}`;
   }
   function mutationMultiplier(c) { return MUTATIONS[c.category]?.[c.mutation]?.[1] || 1; }
-  function limitBreakMultiplier(c) {
+  function limitBreakCount(c) {
     return c.category === 'legend' || c.category === 'illusion'
-      ? 1 + 0.05 * Math.min(10, Math.max(0, Number(c.limitBreak) || 0))
-      : 1;
+      ? Math.min(10, Math.max(0, Number(c.limitBreak) || 0))
+      : 0;
   }
+  function limitBreakMultiplier(c) {
+    return 1 + 0.05 * limitBreakCount(c);
+  }
+  function bossDodgeRate(c) { return BOSS_MODEL.dodgePerLimitBreak * limitBreakCount(c); }
   function resolveParty(chars) {
     const mikonIndexes = chars.map((c,i) => c.category === 'legend' && c.catalogId === 'mikon' ? i : -1).filter(i => i >= 0);
     const ponjaIndexes = chars.map((c,i) => c.category === 'legend' && c.catalogId === 'ponja' ? i : -1).filter(i => i >= 0);
@@ -467,15 +488,15 @@
         const baseHp = truePair ? 200.9e6 : entry.hp;
         const baseAttack = truePair ? 10e6 : entry.attack;
         const multiplier = levelMultiplier * mutationMultiplier(c) * limitBreakMultiplier(c);
-        return { power:baseAttack*multiplier, hp:baseHp*multiplier, type:entry.type, character:entry.character, name:entry.name, truePair };
+        return { power:baseAttack*multiplier, hp:baseHp*multiplier, type:entry.type, character:entry.character, name:entry.name, truePair, bossDodge:bossDodgeRate(c) };
       }
       if (c.category === 'normal' || c.category === 'legend' || c.category === 'illusion') {
-        return { power:0, hp:0, type:c.category === 'normal' ? 'normal' : 'legend', character:'none', name:'未選択', truePair:false };
+        return { power:0, hp:0, type:c.category === 'normal' ? 'normal' : 'legend', character:'none', name:'未選択', truePair:false, bossDodge:bossDodgeRate(c) };
       }
       const attack = Math.max(0,Number(c.manualAttack)||0) * (UNITS[c.manualAttackUnit]||1);
       const enteredHp = Math.max(0,Number(c.manualHp)||0) * (UNITS[c.manualHpUnit]||1);
       const hp = (enteredHp || attack*20) * levelMultiplier;
-      return { power:attack*levelMultiplier, hp, type:c.category === 'normal' ? 'normal' : c.category === 'illusion' || c.category === 'legend' ? 'legend' : c.manualType, character:c.manualCharacter||'none', name:c.manualName||'手動入力', truePair:false };
+      return { power:attack*levelMultiplier, hp, type:c.category === 'normal' ? 'normal' : c.category === 'illusion' || c.category === 'legend' ? 'legend' : c.manualType, character:c.manualCharacter||'none', name:c.manualName||'手動入力', truePair:false, bossDodge:0 };
     });
   }
   function derivedHtml(r) {
@@ -489,7 +510,7 @@
   function renderCharacterRows() {
     const resolved = resolveParty(state.chars);
     charsEl.innerHTML = state.chars.map((c,i) => {
-      const entries = c.category === 'normal' ? NORMAL_CATALOG : c.category === 'legend' ? LEGEND_CATALOG : c.category === 'illusion' ? ILLUSION_CATALOG : [];
+      const entries = catalogEntries(c.category);
       const entry = CATALOG_BY_ID[c.catalogId];
       const searchValue = entry ? catalogLabel(entry) : '';
       const catalogField = entries.length ? `<input type="search" list="catalog-${i}" value="${searchValue}" placeholder="名前・No.で検索" aria-label="キャラ${i+1}のキャラ名" data-i="${i}" data-role="catalog"><datalist id="catalog-${i}">${entries.map(e=>`<option value="${catalogLabel(e)}"></option>`).join('')}</datalist>`
@@ -561,9 +582,10 @@
     const enemyDamage = H / 20;
     const random = xorshift(seed);
     const traitRandom = xorshift(seed ^ 0x9e3779b9);
-    const activeJkCount = party.filter(c => Number(c.power) > 0 && c.character === 'jk').length;
-    const enemyHitChance = Math.max(0, MODEL.enemyHitRate - (enemyType === 'boss' && activeJkCount > 0 ? 0.05 : 0));
-    const allies = party.map(c => {
+    const combatParty = enemyType === 'boss' ? party.slice(0, BOSS_MODEL.charactersPerPlayer) : party;
+    const activeJkCount = combatParty.filter(c => Number(c.power) > 0 && c.character === 'jk').length;
+    const jkTeamDodge = enemyType === 'boss' && activeJkCount > 0 ? BOSS_MODEL.jkOwnTeamDodge : 0;
+    const allies = combatParty.map(c => {
       const power = Number(c.power) || 0;
       const maxHp = Number(c.hp) || power * 20;
       return {
@@ -571,6 +593,7 @@
         period: c.type === 'legend' ? MODEL.legendPeriod : MODEL.normalPeriod,
         alive: power > 0, token: 0, pos: random() * 10,
         target: -1, character: c.character, trait: traitFor(c.character),
+        bossDodge: Math.min(0.95, Math.max(0, Number(c.bossDodge) || 0)),
         jkFirstStrike: power > 0 && c.character === 'jk' && enemyType === 'normal',
         kingNidraProc: power > 0 && c.character === 'kingNidra',
       };
@@ -685,12 +708,14 @@
         }
         if (enemy.target >= 0) {
           enemyHitAttempts++;
+          const ally = allies[enemy.target];
+          const dodgeRate = enemyType === 'boss' ? Math.min(0.95, ally.bossDodge + jkTeamDodge) : 0;
+          const enemyHitChance = enemyType === 'boss' ? BOSS_MODEL.baseHitRate * (1 - dodgeRate) : MODEL.enemyHitRate;
           if (random() >= enemyHitChance) {
             add(time + MODEL.enemyPeriod, 1, event.id, enemy.token);
             continue;
           }
           enemyHits++;
-          const ally = allies[enemy.target];
           ally.hp -= enemyDamage;
           if (ally.hp <= 0) {
             deaths++;
@@ -837,7 +862,7 @@
     $('traitStatus').textContent = '';
   }
   function partySimulationKey(party, enemyType) {
-    return `${enemyType}|${party.map(c => [c.power,c.hp,c.type,c.character].join(',')).join(';')}`;
+    return `${enemyType}|${party.map(c => [c.power,c.hp,c.type,c.character,c.bossDodge].join(',')).join(';')}`;
   }
   function yieldToBrowser() {
     return new Promise(resolve => {
@@ -932,13 +957,23 @@
     $('hourSub').textContent = `ステージ${bestGem.stage}での予測`;
     $('targetTime').textContent = targetValid && targetQD > 0 && bestGem.hour > 0 ? duration(targetQD / bestGem.hour) : '—';
     $('targetTimeSub').textContent = targetValid && targetQD > 0 ? `ステージ${bestGem.stage}での予測` : '目標額を入力してください';
-    const activeJkCount = party.filter(c => Number(c.power) > 0 && c.character === 'jk').length;
-    const activeKingNidraCount = party.filter(c => Number(c.power) > 0 && c.character === 'kingNidra').length;
+    const traitParty = state.enemyType === 'boss' ? party.slice(0, BOSS_MODEL.charactersPerPlayer) : party;
+    const activeLovrilCount = traitParty.filter(c => Number(c.power) > 0 && c.character === 'lovril').length;
+    const activeJkCount = traitParty.filter(c => Number(c.power) > 0 && c.character === 'jk').length;
+    const activeKingNidraCount = traitParty.filter(c => Number(c.power) > 0 && c.character === 'kingNidra').length;
     const traitNotes = [];
+    if (activeLovrilCount) {
+      traitNotes.push(`ラブリル×${activeLovrilCount}：30秒ごとに味方全員を最大HPの20%分回復（重複なし）`);
+    }
     if (activeJkCount) {
       traitNotes.push(state.enemyType === 'boss'
-        ? `JK×${activeJkCount}（BOSS）：全体回避+5ポイント（重複なし）・敵命中実測 ${bestGem.enemyHitRate === null ? '—' : `${(bestGem.enemyHitRate * 100).toFixed(1)}%`}`
+        ? `JK×${activeJkCount}（BOSS）：自チーム全員の回避率+5%（重複なし）・敵命中実測 ${bestGem.enemyHitRate === null ? '—' : `${(bestGem.enemyHitRate * 100).toFixed(1)}%`}`
         : `JK×${activeJkCount}（通常）：各JKの敵ごとの初撃2倍・発動 ${formatCount(bestGem.jkBoostsPerSecond * 60)}回/分`);
+    }
+    if (state.enemyType === 'boss') {
+      const dodgeUsers = traitParty.filter(c => Number(c.power) > 0 && Number(c.bossDodge) > 0);
+      if (dodgeUsers.length) traitNotes.push(`凸回避：${dodgeUsers.map(c => `${c.name} ${(c.bossDodge * 100).toFixed(0)}%`).join('・')}`);
+      traitNotes.push(`BOSS編成：自チーム${BOSS_MODEL.charactersPerPlayer}体／最大${BOSS_MODEL.maxPlayers}人・レイド全体${BOSS_MODEL.maxRaidCharacters}体`);
     }
     if (activeKingNidraCount) {
       traitNotes.push(`キングニドラ×${activeKingNidraCount}：1.5倍発動 ${bestGem.kingProcRate === null ? '—' : `${(bestGem.kingProcRate * 100).toFixed(1)}%`}（攻撃ごと30%）`);
@@ -982,7 +1017,7 @@
     if (el.dataset.role === 'catalog') {
       const index = Number(el.dataset.i);
       const c = state.chars[index];
-      const entries = c.category === 'normal' ? NORMAL_CATALOG : c.category === 'legend' ? LEGEND_CATALOG : c.category === 'illusion' ? ILLUSION_CATALOG : [];
+      const entries = catalogEntries(c.category);
       const query = el.value.trim().toLocaleLowerCase('ja-JP');
       const exact = entries.find(entry => catalogLabel(entry).toLocaleLowerCase('ja-JP') === query || entry.name.toLocaleLowerCase('ja-JP') === query || entry.id === query);
       if (exact) {
@@ -1002,13 +1037,32 @@
     updateDerivedRows();
     save();
   });
+  charsEl.addEventListener('wheel', event => {
+    const el = event.target;
+    if (el.dataset?.role !== 'catalog' || el.dataset.i === undefined || event.deltaY === 0) return;
+    const index = Number(el.dataset.i);
+    const c = state.chars[index];
+    const entries = catalogEntries(c.category);
+    if (!entries.length) return;
+    event.preventDefault();
+    const direction = event.deltaY > 0 ? 1 : -1;
+    const currentIndex = entries.findIndex(entry => entry.id === c.catalogId);
+    const nextIndex = currentIndex < 0
+      ? (direction > 0 ? 0 : entries.length - 1)
+      : (currentIndex + direction + entries.length) % entries.length;
+    const nextEntry = entries[nextIndex];
+    c.catalogId = nextEntry.id;
+    el.value = catalogLabel(nextEntry);
+    updateDerivedRows();
+    save();
+  }, { passive:false });
   charsEl.addEventListener('change', event => {
     const el = event.target;
     if (el.dataset.i === undefined) return;
     const index = Number(el.dataset.i);
     const c = state.chars[index];
     if (el.dataset.role === 'catalog') {
-      const entries = c.category === 'normal' ? NORMAL_CATALOG : c.category === 'legend' ? LEGEND_CATALOG : c.category === 'illusion' ? ILLUSION_CATALOG : [];
+      const entries = catalogEntries(c.category);
       const query = el.value.trim().toLocaleLowerCase('ja-JP');
       const exact = entries.find(entry => catalogLabel(entry).toLocaleLowerCase('ja-JP') === query || entry.name.toLocaleLowerCase('ja-JP') === query || entry.id === query);
       const partial = entries.filter(entry => catalogLabel(entry).toLocaleLowerCase('ja-JP').includes(query));
@@ -1076,9 +1130,9 @@
     renderInputs(); save();
   });
   $('download').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify({ version: '17.6', ...state }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: '17.7', ...state }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob), a = document.createElement('a');
-    a.href = url; a.download = 'moncolle-calculator-v17.6-settings.json'; a.click();
+    a.href = url; a.download = 'moncolle-calculator-v17.7-settings.json'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('load').addEventListener('click', () => $('file').click());
