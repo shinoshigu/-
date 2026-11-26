@@ -22,6 +22,31 @@
       margin: 0 0 14px;
       box-shadow: 0 2px 8px #1e304608;
     }
+    .mode-nav {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding: 6px;
+      margin: 0 0 14px;
+      background: #fff;
+      border: 1px solid #dce4ed;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px #1e304608;
+    }
+    .mode-link {
+      display: block;
+      padding: 12px 16px;
+      border-radius: 8px;
+      color: #53667b;
+      text-align: center;
+      text-decoration: none;
+      font-weight: 750;
+    }
+    .mode-link:hover { background: #f3f6fa; }
+    .mode-link.active {
+      color: #fff;
+      background: #175aa6;
+    }
     h1 { font-size: 1.45rem; margin: 0 0 7px; }
     h2 { font-size: 1.08rem; margin: 0 0 15px; }
     .version { font-size: .8rem; color: #728398; }
@@ -100,6 +125,7 @@
       background: #f5f9ff;
       border-radius: 6px;
     }
+    .quick-guide { margin: 0; padding-left: 1.4em; color: #42566d; line-height: 1.8; }
     @media (max-width: 720px) {
       .panel { padding: 15px; }
       .char { grid-template-columns: 48px 105px minmax(0, 1fr); gap: 6px; }
@@ -123,16 +149,20 @@
 </head>
 <body>
 <main class="wrap">
+  <nav class="mode-nav" aria-label="計算機の切り替え">
+    <a class="mode-link active" href="./" aria-current="page">ステージ</a>
+    <a class="mode-link" href="./boss/">ボス</a>
+  </nav>
+
   <section class="panel">
     <h1>最適ステージ・予想時給計算機 <span class="version">v18</span></h1>
-    <div class="muted">実測した討伐数・死亡数・長時間ジェム獲得量で補正し、ジェム・餌・総合効率でステージ1～75を比較します。</div>
+    <div class="muted">編成と現在の倍率を選ぶだけで、ステージ1～75のジェム・餌・総合効率を比較できます。</div>
   </section>
 
   <section class="panel">
     <h2>7キャラの編成</h2>
     <div class="chars" id="chars"></div>
-    <p class="muted catalog-help">カテゴリ→キャラ→変異→Lv・凸の順に選ぶと、Lv1図鑑値からHP・攻撃力・特性を自動設定します。凸は伝説・幻だけに表示されます。通常はNo.または名前、伝説・幻は名前で検索できます。キャラ名欄ではホイールで前後へ切り替えられ、通常キャラだけは上回転でNo.が増えます。変異欄もホイールで変更でき、上回転で上位の変異へ進みます。</p>
-    <p class="muted">自分にのみ発動する特性は各個体ごと、チーム効果は重複せず1回だけ発動します。ラブリルは30秒ごとに味方全員を最大HPの20%回復し、BOSS時のJKは自チーム全員の回避率を+5%します。クビナイト・キングニドラと通常敵へのJK初撃は各個体に発動します。ミコンとポンジャは1対1の組ごとに、真の力のLv1値（HP 200.9M・攻撃10M）へ切り替わります。</p>
+    <p class="muted catalog-help">カテゴリ→キャラ→変異→Lv・凸の順に選ぶと、HP・攻撃力・特性を自動設定します。名前と変異はマウスホイールでも変更できます。</p>
   </section>
 
   <section class="panel">
@@ -157,11 +187,8 @@
         <label for="premiumRate">高級餌になる確率（%）</label>
         <input id="premiumRate" type="number" min="0" max="25" step="1" value="25">
       </div>
-      <div class="field">
-        <label for="enemyType">敵タイプ（特性判定用）</label>
-        <select id="enemyType"><option value="normal">通常</option><option value="boss">BOSS</option></select>
-      </div>
     </div>
+    <input id="enemyType" type="hidden" value="normal">
     <p class="muted">餌はステージ46以上で、敵撃破時に基本5%でドロップ判定（カボチャイルドで+3ポイント）し、落ちた餌だけ高級化を別判定します（初期25%、アヤツリッチで+5ポイント）。入力内容はブラウザ内に自動保存します。</p>
   </section>
 
@@ -186,9 +213,6 @@
     </div>
     <p id="traitStatus" class="note"></p>
     <p id="status" class="warn" role="status"></p>
-    <div class="note calibration">
-      基準：旧編成のステージ63（6時間20分で3.6QD）。ステージ72（実働約11時間59分30秒で5.5QD）も高ステージ補正に使用しています。戦闘内部値は、現在編成の実測「63＝50体/分・死亡0、65＝34体/分・死亡0、72＝29体/5分・死亡63」を基準に調整しています。
-    </div>
   </section>
 
   <section class="panel">
@@ -247,18 +271,13 @@
   </section>
 
   <section class="panel">
-    <details>
-      <summary>v18の固定モデルを見る</summary>
-      <p class="note">通常キャラは実効1.0秒/攻撃、伝説・幻は3秒/攻撃。敵は1体ごとに0.7回/秒の攻撃試行を行い、ランダム移動・射程・接触時間を含む実効命中率を35%としています。敵補充は3～5秒、味方復活は5秒、再標的化には1.5秒を使用します。</p>
-      <p class="note">敵HP＝30×1.2^((ステージ−1)＋⌊ステージ÷2⌋)、敵攻撃力＝敵HP÷20です。これはLv1通常キャラのNo.⌊1.5×ステージ⌋に対してHP・攻撃力が半分になる関係です。通常キャラのLv1値は、No.nのHP＝60×1.2^(n−1)、攻撃力＝3×1.2^(n−1)で計算します。全キャラのLv倍率は「1＋0.05×(レベル−1)」、通常の変異は1/2/4/8倍、幻の変異は1/1.2/1.44倍です。伝説・幻の通常戦では「1＋0.05×凸数」をHP・攻撃力へ掛けます。BOSS戦では凸倍率をHPだけへ掛け、さらに凸数×2%の回避率を加えます。</p>
-      <p class="note">ジェム報酬はステージ倍率1.30を基本とし、ステージ63より上は63・72の長時間測定に合うよう緩やかな実測補正を加えます。リバース倍率は3.5倍、スキル倍率と有効なジェム特性を共通倍率として反映します。ジェム+10%のチーム効果は対象キャラが複数いても1回だけです。</p>
-      <p class="note">次のリバースに必要なジェムは序盤の実測表に合わせ、0リバ＝500、1～4リバは8Kから毎回8倍、5リバ＝31.25M、以降は毎回5倍で計算します。リバース数を変更すると目標額へ自動入力しますが、その後は目標額を自由に変更できます。</p>
-      <p class="note">餌はステージ46以上で、敵1体の撃破ごとに基本5%のドロップ判定を行い、カボチャイルド編成時は8%になります。餌が落ちた場合だけ高級化を判定し、入力した確率（初期25%）にアヤツリッチ編成時の5ポイントを加えます。</p>
-      <p class="note">BOSS戦は1人あたり最大3体を編成でき、最大4人で協力するため、レイド全体では最大12体です。現在のBOSS計算では入力欄の先頭3体を自分のチームとして扱い、未入力の他プレイヤー3人分は加算しません。</p>
-      <p class="note">ラブリルは生存している間、30秒ごとに味方全員をそれぞれの最大HPの20%分回復します。同じキャラでの重複はありません。通常計算では入力した7体、BOSS計算では現在入力できる自チーム3体を回復対象にします。BOSS実装後は他プレイヤーを含む最大12体へ拡張できるスコープとして内部定義しています。</p>
-      <p class="note">JKは通常敵に対して各JK本人の敵ごとの初撃だけ2倍です。BOSS選択時は自チームにJKが1体以上いれば、自チーム3体だけの回避率を5%加算します。他プレイヤーのチームには適用せず、同じ自チーム内で複数編成しても重複しません。BOSS戦はお互いの攻撃が必中になる前提で基礎命中率を100%とし、その後に凸・JKの回避率を独立判定します。BOSS固有のHP・攻撃力は未判明です。</p>
-      <p class="note">キングニドラは各個体が攻撃成立ごとに30%の独立抽選を行い、成功時は本人のダメージを1.5倍にします。特性抽選には戦闘挙動と別の固定乱数列を使い、12回の再現可能な試行を平均します。</p>
-    </details>
+    <h2>はじめて使う方へ</h2>
+    <ol class="quick-guide">
+      <li>持っている7体を、上から順に選びます。</li>
+      <li>リバース数・ジェムスキル倍率・餌の設定を入力します。</li>
+      <li>計算結果とランキングから、目的に合うステージを確認します。</li>
+    </ol>
+    <p class="muted">入力内容はこのブラウザに自動保存されます。詳しい仕様を知らなくても、そのまま使えます。</p>
   </section>
 </main>
 
@@ -420,7 +439,7 @@
       target: String(obj.target ?? 0),
       targetUnit: GEM_UNITS.some(([u]) => u === obj.targetUnit) ? obj.targetUnit : 'QD',
       premiumRate: String(Number.isFinite(savedPremiumRate) ? Math.min(25, Math.max(0, Math.round(savedPremiumRate))) : 25),
-      enemyType: ['normal','boss'].includes(obj.enemyType) ? obj.enemyType : 'normal',
+      enemyType: 'normal',
     };
   }
 
