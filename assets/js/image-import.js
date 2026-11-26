@@ -188,14 +188,14 @@
     return makeTextCanvas(rowCanvas, index);
   }
 
-  function makeNameCanvas(rowCanvas, index) {
+  function makeNameCanvas(rowCanvas, index, variant = 'loose') {
     const wideCrop = rowCanvas.width / rowCanvas.height >= 5.5;
     return makeTextCanvas(rowCanvas, index, {
       top: 0,
       bottom: wideCrop ? 0.32 : 0.3,
       left: 0.03,
       right: 0.97,
-      variant: 'loose',
+      variant,
     });
   }
 
@@ -328,6 +328,31 @@
     return best.score >= 0.38 ? best : { entry: null, mutation: 'normal', score: best.score };
   }
 
+  function decideCatalogFromNameReads(texts) {
+    const votes = new Map();
+    texts.filter(Boolean).forEach(text => {
+      const match = findBestCatalog([text]);
+      if (!match.entry || match.score < 0.45) return;
+      const vote = votes.get(match.entry.id) || { entry: match.entry, count: 0, total: 0, best: 0 };
+      vote.count += 1;
+      vote.total += match.score;
+      vote.best = Math.max(vote.best, match.score);
+      votes.set(match.entry.id, vote);
+    });
+    const rankedVotes = [...votes.values()].sort((left, right) =>
+      right.count - left.count || right.total - left.total || right.best - left.best);
+    const winner = rankedVotes[0];
+    const merged = findBestCatalog(texts);
+    const agreed = winner && winner.count >= 2 && winner.total / winner.count >= 0.5;
+    const exact = merged.entry && merged.score >= 0.9;
+    const entry = agreed ? winner.entry : exact ? merged.entry : null;
+    return {
+      entry,
+      accepted: Boolean(entry),
+      confidence: agreed ? winner.total / winner.count : exact ? merged.score : merged.score,
+    };
+  }
+
   function rgbToHsv(red, green, blue) {
     const r = red / 255;
     const g = green / 255;
@@ -443,11 +468,7 @@
     const matches = mergeCatalogMatches(nameTexts);
     const best = matches[0] || { entry: null, mutation: 'normal', score: 0 };
     const match = best.score >= 0.38 ? best : { entry: null, mutation: 'normal', score: best.score };
-    let mutation = match.mutation;
-    const visualMutation = match.entry?.category === 'normal' || !match.entry
-      ? classifyNormalMutation(rowCanvas, index)
-      : { mutation, confidence: 0 };
-    if (match.entry?.category === 'normal') mutation = visualMutation.mutation;
+    const mutation = 'normal';
     const allNameText = nameTexts.filter(Boolean).join(' / ');
     const dedicatedLevel = parseDedicatedLevel(levelText);
     const limitBreak = match.entry?.category === 'normal'
@@ -464,8 +485,8 @@
       candidateMatches: matches.slice(0, 10),
       attackVerified: false,
       levelLocked: dedicatedLevel.locked,
-      visualMutation: visualMutation.mutation,
-      visualMutationConfidence: visualMutation.confidence,
+      visualMutation: 'normal',
+      visualMutationConfidence: 0,
     };
   }
 
@@ -651,32 +672,29 @@
     try {
       const worker = await getOcrWorker();
       recognized = [];
-      const primaryRecords = [];
+      const nameRecords = [];
       for (let index = 0; index < 7; index += 1) {
         setStatus(`キャラ${index + 1}/7の名前を読み取っています…`);
-        const primaryText = await recognizeText(worker, makeOcrCanvas(preview, index));
-        const nameTexts = [primaryText];
-        let nameMatch = findBestCatalog(nameTexts);
-        if (!nameMatch.entry || nameMatch.score < 0.78) {
-          const retryText = await recognizeText(worker, makeNameCanvas(preview, index), { pageMode: '7' });
-          nameTexts.push(retryText);
-          nameMatch = findBestCatalog(nameTexts);
+        const nameTexts = [];
+        for (const variant of ['strict', 'loose', 'bright']) {
+          nameTexts.push(await recognizeText(worker, makeNameCanvas(preview, index, variant), { pageMode: '7' }));
         }
-        primaryRecords.push({ index, primaryText, nameTexts, nameMatch });
+        nameRecords.push({
+          index,
+          nameTexts,
+          decision: decideCatalogFromNameReads(nameTexts),
+        });
       }
 
-      const primaryAttackCount = primaryRecords.filter(record => parseAttack(record.primaryText)).length;
-      const hasAttackStats = primaryAttackCount >= 2 || preview.width / preview.height < 5.7;
-
-      for (const record of primaryRecords) {
-        const { index, primaryText, nameTexts, nameMatch } = record;
+      for (const record of nameRecords) {
+        const { index, nameTexts, decision } = record;
         setStatus(`キャラ${index + 1}/7のLv・凸を読み取っています…`);
-        let levelText = await recognizeText(worker, makeLevelCanvas(preview, index, hasAttackStats), {
+        let levelText = await recognizeText(worker, makeLevelCanvas(preview, index, true), {
           pageMode: '7',
           whitelist: '0123456789LlVvIiOoYy',
         });
         if (!parseDedicatedLevel(levelText).locked) {
-          const retryLevelText = await recognizeText(worker, makeLevelCanvas(preview, index, hasAttackStats, 'strict'), {
+          const retryLevelText = await recognizeText(worker, makeLevelCanvas(preview, index, true, 'strict'), {
             pageMode: '7',
             whitelist: '0123456789LlVvIiOoYy',
           });
@@ -684,28 +702,34 @@
             ? retryLevelText
             : [levelText, retryLevelText].filter(Boolean).join(' ');
         }
+        if (!parseDedicatedLevel(levelText).locked) {
+          const cardOnlyLevelText = await recognizeText(worker, makeLevelCanvas(preview, index, false, 'strict'), {
+            pageMode: '7',
+            whitelist: '0123456789LlVvIiOoYy',
+          });
+          levelText = parseDedicatedLevel(cardOnlyLevelText).locked
+            ? cardOnlyLevelText
+            : [levelText, cardOnlyLevelText].filter(Boolean).join(' ');
+        }
 
         let limitText = '';
-        const needsLimitRead = nameMatch.entry
-          && nameMatch.entry.category !== 'normal'
-          && parseLimitBreak(primaryText) === 0;
+        const needsLimitRead = decision.entry && decision.entry.category !== 'normal';
         if (needsLimitRead) {
           limitText = await recognizeText(worker, makeLimitCanvas(preview, index), { pageMode: '7' });
         }
 
-        let attackText = '';
-        const attackFromPrimary = parseAttack(primaryText);
-        if (!attackFromPrimary && hasAttackStats) {
-          attackText = await recognizeText(worker, makeAttackCanvas(preview, index), {
-            pageMode: '7',
-            whitelist: '0123456789.,KMBTkmbt',
-          });
-        }
-        recognized.push(inferResult(nameTexts, levelText, limitText, attackText, preview, index));
+        const item = inferResult(nameTexts, levelText, limitText, '', preview, index);
+        item.catalogId = decision.accepted ? decision.entry.id : '';
+        item.confidence = decision.confidence;
+        item.mutation = 'normal';
+        item.limitBreak = decision.entry?.category === 'legend' || decision.entry?.category === 'illusion'
+          ? parseLimitBreak(nameTexts.join(' '), limitText)
+          : 0;
+        item.characterLocked = decision.accepted;
+        recognized.push(item);
       }
-      reconcileWithAttack(recognized);
       renderResults();
-      setStatus('解析しました。名前・Lv・凸・変異を確認してから反映してください。切り取り画像ほど高精度になります。');
+      setStatus('解析しました。キャラ名・Lv・凸を確認してください。変異は手動で選択してください。');
     } catch (error) {
       console.error(error);
       setStatus(`解析に失敗しました：${error.message}`);
