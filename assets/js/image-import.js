@@ -24,6 +24,7 @@
   const CATEGORY_LABELS = { normal: '通常', legend: '伝説', illusion: '幻' };
   let sourceImage = null;
   let ocrWorker = null;
+  let openCvPromise = null;
   let recognized = [];
 
   function setStatus(message) {
@@ -95,11 +96,11 @@
     context.drawImage(sourceImage, rect.x, rect.y, rect.width, rect.height, 0, 0, preview.width, preview.height);
   }
 
-  function loadScript(src) {
+  function loadScript(src, isReady = () => true) {
     return new Promise((resolve, reject) => {
       const existing = document.querySelector(`script[src="${src}"]`);
       if (existing) {
-        if (window.Tesseract) resolve();
+        if (isReady()) resolve();
         else existing.addEventListener('load', resolve, { once: true });
         return;
       }
@@ -115,7 +116,7 @@
   async function getOcrWorker() {
     if (ocrWorker) return ocrWorker;
     setStatus('初回用のOCRデータを読み込んでいます…');
-    await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+    await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js', () => Boolean(window.Tesseract));
     ocrWorker = await window.Tesseract.createWorker(['jpn', 'eng'], 1, {
       logger(message) {
         if (!message.progress) return;
@@ -127,6 +128,35 @@
       preserve_interword_spaces: '1',
     });
     return ocrWorker;
+  }
+
+  async function getOpenCv() {
+    if (window.cv?.Mat) return window.cv;
+    if (openCvPromise) return openCvPromise;
+    openCvPromise = (async () => {
+      setStatus('画像を整えるOpenCVを読み込んでいます…');
+      await loadScript('https://docs.opencv.org/4.x/opencv.js', () => Boolean(window.cv));
+      if (window.cv && typeof window.cv.then === 'function') window.cv = await window.cv;
+      if (window.cv?.Mat) return window.cv;
+      return new Promise((resolve, reject) => {
+        const started = Date.now();
+        const timer = setInterval(() => {
+          if (window.cv?.Mat) {
+            clearInterval(timer);
+            resolve(window.cv);
+          } else if (Date.now() - started > 15000) {
+            clearInterval(timer);
+            reject(new Error('OpenCVの初期化が時間内に完了しませんでした'));
+          }
+        }, 100);
+      });
+    })();
+    try {
+      return await openCvPromise;
+    } catch (error) {
+      openCvPromise = null;
+      throw error;
+    }
   }
 
   async function recognizeText(worker, canvas, options = {}) {
@@ -160,6 +190,32 @@
     context.fillStyle = '#fff';
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(rowCanvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
+    if (variant === 'adaptive' && window.cv?.Mat) {
+      const source = window.cv.imread(canvas);
+      const gray = new window.cv.Mat();
+      const blurred = new window.cv.Mat();
+      const binary = new window.cv.Mat();
+      try {
+        window.cv.cvtColor(source, gray, window.cv.COLOR_RGBA2GRAY);
+        window.cv.GaussianBlur(gray, blurred, new window.cv.Size(3, 3), 0, 0, window.cv.BORDER_DEFAULT);
+        window.cv.adaptiveThreshold(
+          blurred,
+          binary,
+          255,
+          window.cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+          window.cv.THRESH_BINARY_INV,
+          31,
+          7,
+        );
+        window.cv.imshow(canvas, binary);
+      } finally {
+        source.delete();
+        gray.delete();
+        blurred.delete();
+        binary.delete();
+      }
+      return canvas;
+    }
     const image = context.getImageData(0, 0, canvas.width, canvas.height);
     for (let offset = 0; offset < image.data.length; offset += 4) {
       const red = image.data[offset];
@@ -209,13 +265,13 @@
     });
   }
 
-  function makeLimitCanvas(rowCanvas, index) {
+  function makeLimitCanvas(rowCanvas, index, variant = 'loose') {
     return makeTextCanvas(rowCanvas, index, {
       top: 0,
       bottom: 0.28,
       left: 0.08,
       right: 0.95,
-      variant: 'loose',
+      variant,
     });
   }
 
@@ -582,6 +638,34 @@
     });
   }
 
+  function fillUnresolvedNormalByNumbers(items) {
+    const normalMutations = api.mutations.normal || [{ id: 'normal', multiplier: 1 }];
+    items.forEach(item => {
+      if (item.catalogId || !item.levelLocked || !item.observedAttack) return;
+      const levelMultiplier = 1 + 0.05 * (item.level - 1);
+      const matches = [];
+      api.catalog.filter(entry => entry.category === 'normal').forEach(entry => {
+        normalMutations.forEach(mutation => {
+          const expected = entry.attack * mutation.multiplier * levelMultiplier;
+          matches.push({
+            entry,
+            relativeError: Math.abs(expected - item.observedAttack) / item.observedAttack,
+          });
+        });
+      });
+      matches.sort((left, right) => left.relativeError - right.relativeError);
+      const best = matches[0];
+      const next = matches.find(match => match.entry.id !== best.entry.id);
+      const unique = best.relativeError <= 0.02
+        && (next?.relativeError ?? 1) - best.relativeError >= 0.02;
+      if (!unique) return;
+      item.catalogId = best.entry.id;
+      item.mutation = 'normal';
+      item.confidence = Math.max(item.confidence, 0.5);
+      item.attackVerified = true;
+    });
+  }
+
   function addCatalogOptions(select) {
     select.add(new Option('候補なし・手動で選択', ''));
     for (const category of ['normal', 'legend', 'illusion']) {
@@ -671,12 +755,17 @@
     resultsBox.hidden = true;
     try {
       const worker = await getOcrWorker();
+      try {
+        await getOpenCv();
+      } catch (error) {
+        console.warn('OpenCVを使わずに解析を続けます', error);
+      }
       recognized = [];
       const nameRecords = [];
       for (let index = 0; index < 7; index += 1) {
         setStatus(`キャラ${index + 1}/7の名前を読み取っています…`);
         const nameTexts = [];
-        for (const variant of ['strict', 'loose', 'bright']) {
+        for (const variant of ['strict', 'loose', 'adaptive']) {
           nameTexts.push(await recognizeText(worker, makeNameCanvas(preview, index, variant), { pageMode: '7' }));
         }
         nameRecords.push({
@@ -689,12 +778,10 @@
       for (const record of nameRecords) {
         const { index, nameTexts, decision } = record;
         setStatus(`キャラ${index + 1}/7のLv・凸を読み取っています…`);
-        let levelText = await recognizeText(worker, makeLevelCanvas(preview, index, true), {
-          pageMode: '7',
-          whitelist: '0123456789LlVvIiOoYy',
-        });
+        const fullText = await recognizeText(worker, makeOcrCanvas(preview, index));
+        let levelText = parseDedicatedLevel(fullText).locked ? fullText : '';
         if (!parseDedicatedLevel(levelText).locked) {
-          const retryLevelText = await recognizeText(worker, makeLevelCanvas(preview, index, true, 'strict'), {
+          const retryLevelText = await recognizeText(worker, makeLevelCanvas(preview, index, true, 'adaptive'), {
             pageMode: '7',
             whitelist: '0123456789LlVvIiOoYy',
           });
@@ -715,19 +802,26 @@
         let limitText = '';
         const needsLimitRead = decision.entry && decision.entry.category !== 'normal';
         if (needsLimitRead) {
-          limitText = await recognizeText(worker, makeLimitCanvas(preview, index), { pageMode: '7' });
+          limitText = parseLimitBreak(fullText) > 0
+            ? fullText
+            : await recognizeText(worker, makeLimitCanvas(preview, index), { pageMode: '7' });
+          if (parseLimitBreak(limitText) === 0) {
+            const retryLimitText = await recognizeText(worker, makeLimitCanvas(preview, index, 'adaptive'), { pageMode: '7' });
+            limitText = [limitText, retryLimitText].filter(Boolean).join(' ');
+          }
         }
 
-        const item = inferResult(nameTexts, levelText, limitText, '', preview, index);
+        const item = inferResult(nameTexts, levelText, limitText, fullText, preview, index);
         item.catalogId = decision.accepted ? decision.entry.id : '';
         item.confidence = decision.confidence;
         item.mutation = 'normal';
         item.limitBreak = decision.entry?.category === 'legend' || decision.entry?.category === 'illusion'
-          ? parseLimitBreak(nameTexts.join(' '), limitText)
+          ? parseLimitBreak(nameTexts.join(' '), fullText, limitText)
           : 0;
         item.characterLocked = decision.accepted;
         recognized.push(item);
       }
+      fillUnresolvedNormalByNumbers(recognized);
       renderResults();
       setStatus('解析しました。キャラ名・Lv・凸を確認してください。変異は手動で選択してください。');
     } catch (error) {
