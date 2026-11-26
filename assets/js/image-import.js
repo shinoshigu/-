@@ -199,13 +199,13 @@
     });
   }
 
-  function makeLevelCanvas(rowCanvas, index, hasAttackStats) {
+  function makeLevelCanvas(rowCanvas, index, hasAttackStats, variant = 'loose') {
     return makeTextCanvas(rowCanvas, index, {
       top: hasAttackStats ? 0.42 : 0.46,
-      bottom: hasAttackStats ? 0.79 : 0.98,
+      bottom: hasAttackStats ? 0.86 : 0.98,
       left: 0.28,
       right: 0.97,
-      variant: 'loose',
+      variant,
     });
   }
 
@@ -221,7 +221,7 @@
 
   function makeAttackCanvas(rowCanvas, index) {
     return makeTextCanvas(rowCanvas, index, {
-      top: 0.79,
+      top: 0.86,
       bottom: 1,
       left: 0.03,
       right: 0.97,
@@ -353,7 +353,7 @@
     const cropBottom = rowCanvas.width / rowCanvas.height >= 5.5 ? 1 : 0.76;
     const cropHeight = Math.max(1, Math.round(rowCanvas.height * cropBottom));
     const image = context.getImageData(startX, 0, Math.min(width, rowCanvas.width - startX), cropHeight);
-    const hueBins = new Set();
+    const hueBins = Array(12).fill(0);
     let samples = 0;
     let saturated = 0;
     let yellow = 0;
@@ -362,31 +362,34 @@
     let valueTotal = 0;
     const sampleWidth = image.width;
     const sampleHeight = image.height;
-    for (let y = 0; y < sampleHeight; y += 4) {
-      for (let x = 0; x < sampleWidth; x += 4) {
-        const border = x < sampleWidth * 0.2 || x > sampleWidth * 0.8 || y < sampleHeight * 0.16;
-        if (!border) continue;
+    for (let y = Math.round(sampleHeight * 0.08); y < sampleHeight * 0.96; y += 4) {
+      for (let x = Math.round(sampleWidth * 0.08); x < sampleWidth * 0.92; x += 4) {
         const offset = (y * sampleWidth + x) * 4;
         const hsv = rgbToHsv(image.data[offset], image.data[offset + 1], image.data[offset + 2]);
+        if (hsv.value < 0.14) continue;
         samples += 1;
         valueTotal += hsv.value;
         if (hsv.value > 0.72) bright += 1;
         if (hsv.saturation > 0.42 && hsv.value > 0.28) {
           saturated += 1;
-          hueBins.add(Math.floor(hsv.hue / 30));
+          hueBins[Math.min(11, Math.floor(hsv.hue / 30))] += 1;
           if (hsv.hue >= 42 && hsv.hue <= 78) yellow += 1;
           if (hsv.hue >= 255 && hsv.hue <= 330) purple += 1;
         }
       }
     }
-    if (!samples) return 'normal';
+    if (!samples) return { mutation: 'normal', confidence: 0 };
     const saturatedRatio = saturated / samples;
     const brightRatio = bright / samples;
     const averageValue = valueTotal / samples;
-    if (hueBins.size >= 6 && saturatedRatio >= 0.18) return 'rainbow';
-    if (yellow / samples >= 0.16 && brightRatio >= 0.34) return 'shiny';
-    if (averageValue <= 0.34 || (purple / samples >= 0.17 && brightRatio < 0.3)) return 'dark';
-    return 'normal';
+    const activeHueBins = hueBins.filter(count => count >= Math.max(4, saturated * 0.015)).length;
+    if (activeHueBins >= 7 && saturatedRatio >= 0.25) return { mutation: 'rainbow', confidence: 0.95 };
+    if (yellow / samples >= 0.38 && brightRatio >= 0.35) return { mutation: 'shiny', confidence: 0.95 };
+    if (brightRatio < 0.3 && (averageValue <= 0.48 || activeHueBins <= 4)) {
+      return { mutation: 'dark', confidence: 0.88 };
+    }
+    const normalConfidence = saturatedRatio <= 0.16 && brightRatio >= 0.4 ? 0.9 : 0.62;
+    return { mutation: 'normal', confidence: normalConfidence };
   }
 
   function parseLevelDirect(text) {
@@ -411,6 +414,16 @@
     return candidates.at(-1) || 1;
   }
 
+  function parseDedicatedLevel(text) {
+    const direct = parseLevelDirect(text);
+    if (direct) return { level: direct, locked: true };
+    const cleaned = normalizeText(text).replace(/[OＯ]/g, '0').replace(/[IＩ]/g, '1');
+    const singleDigit = cleaned.match(/^([1-9])$/);
+    return singleDigit
+      ? { level: Number(singleDigit[1]), locked: true }
+      : { level: null, locked: false };
+  }
+
   function parseLimitBreak(...texts) {
     const cleaned = normalizeText(texts.filter(Boolean).join(' ')).replace(/[OＯ]/g, '0');
     const match = cleaned.match(/([0-9]{1,2})凸/);
@@ -431,21 +444,28 @@
     const best = matches[0] || { entry: null, mutation: 'normal', score: 0 };
     const match = best.score >= 0.38 ? best : { entry: null, mutation: 'normal', score: best.score };
     let mutation = match.mutation;
-    if (match.entry?.category === 'normal') mutation = classifyNormalMutation(rowCanvas, index);
+    const visualMutation = match.entry?.category === 'normal' || !match.entry
+      ? classifyNormalMutation(rowCanvas, index)
+      : { mutation, confidence: 0 };
+    if (match.entry?.category === 'normal') mutation = visualMutation.mutation;
     const allNameText = nameTexts.filter(Boolean).join(' / ');
+    const dedicatedLevel = parseDedicatedLevel(levelText);
     const limitBreak = match.entry?.category === 'normal'
       ? 0
       : parseLimitBreak(allNameText, limitText);
     return {
       catalogId: match.entry?.id || '',
       mutation,
-      level: parseLevel(allNameText, levelText),
+      level: dedicatedLevel.level || parseLevel(allNameText, levelText),
       limitBreak,
       confidence: match.score,
       rawText: [allNameText, levelText, limitText, attackText].filter(Boolean).join(' / ').replace(/\s+/g, ' ').trim(),
       observedAttack: parseAttack(allNameText, attackText),
       candidateMatches: matches.slice(0, 10),
       attackVerified: false,
+      levelLocked: dedicatedLevel.locked,
+      visualMutation: visualMutation.mutation,
+      visualMutationConfidence: visualMutation.confidence,
     };
   }
 
@@ -465,11 +485,17 @@
 
   function bestAttackFit(entry, item, observedAttack, paired) {
     let best = null;
+    const levels = item.levelLocked
+      ? [Math.min(150, Math.max(1, Math.round(Number(item.level) || 1)))]
+      : Array.from({ length: 150 }, (_, index) => index + 1);
     const limits = entry.category === 'legend' || entry.category === 'illusion'
       ? Array.from({ length: 11 }, (_, index) => index)
       : [0];
-    for (const mutation of mutationOptions(entry)) {
-      for (let level = 1; level <= 150; level += 1) {
+    const mutations = entry.category === 'normal' && item.visualMutationConfidence >= 0.75
+      ? mutationOptions(entry).filter(option => option.id === item.visualMutation)
+      : mutationOptions(entry);
+    for (const mutation of mutations) {
+      for (const level of levels) {
         for (const limitBreak of limits) {
           const expected = expectedAttack(entry, mutation.id, level, limitBreak, paired);
           const relativeError = Math.abs(expected - observedAttack) / observedAttack;
@@ -498,17 +524,34 @@
 
     items.forEach(item => {
       if (!item.observedAttack) return;
-      const candidates = item.candidateMatches.filter(candidate => candidate.score >= 0.26).slice(0, 10);
+      let candidates = item.candidateMatches.filter(candidate => candidate.score >= 0.26).slice(0, 10);
+      const lockedNormalEvidence = item.levelLocked && item.visualMutationConfidence >= 0.75;
+      if (lockedNormalEvidence) {
+        const candidateIds = new Set(candidates.map(candidate => candidate.entry.id));
+        candidates = candidates.concat(api.catalog
+          .filter(entry => entry.category === 'normal' && !candidateIds.has(entry.id))
+          .map(entry => ({ entry, mutation: item.visualMutation, score: 0 })));
+      }
       let best = null;
+      const evaluations = [];
       for (const candidate of candidates) {
         const paired = pairAvailable && (candidate.entry.id === 'mikon' || candidate.entry.id === 'ponja');
         const fit = bestAttackFit(candidate.entry, item, item.observedAttack, paired);
         const attackScore = Math.max(0, 1 - fit.relativeError / 0.12);
         const combinedScore = candidate.score * 0.55 + attackScore * 0.45;
-        if (!best || combinedScore > best.combinedScore) best = { candidate, fit, combinedScore };
+        const evaluation = { candidate, fit, combinedScore };
+        evaluations.push(evaluation);
+        if (!best || combinedScore > best.combinedScore) best = evaluation;
       }
       if (!best || best.fit.relativeError > 0.08) return;
-      if (!item.catalogId && (best.candidate.score < 0.28 || best.fit.relativeError > 0.02)) return;
+      if (!item.catalogId && best.candidate.score < 0.28) {
+        const attackOrder = evaluations.slice().sort((left, right) => left.fit.relativeError - right.fit.relativeError);
+        const nextError = attackOrder.find(evaluation => evaluation.candidate.entry.id !== best.candidate.entry.id)?.fit.relativeError ?? 1;
+        const uniqueAttackMatch = lockedNormalEvidence
+          && best.fit.relativeError <= 0.02
+          && nextError - best.fit.relativeError >= 0.04;
+        if (!uniqueAttackMatch) return;
+      }
       item.catalogId = best.candidate.entry.id;
       item.mutation = best.fit.mutation;
       item.level = best.fit.level;
@@ -628,10 +671,19 @@
       for (const record of primaryRecords) {
         const { index, primaryText, nameTexts, nameMatch } = record;
         setStatus(`キャラ${index + 1}/7のLv・凸を読み取っています…`);
-        const levelText = await recognizeText(worker, makeLevelCanvas(preview, index, hasAttackStats), {
+        let levelText = await recognizeText(worker, makeLevelCanvas(preview, index, hasAttackStats), {
           pageMode: '7',
           whitelist: '0123456789LlVvIiOoYy',
         });
+        if (!parseDedicatedLevel(levelText).locked) {
+          const retryLevelText = await recognizeText(worker, makeLevelCanvas(preview, index, hasAttackStats, 'strict'), {
+            pageMode: '7',
+            whitelist: '0123456789LlVvIiOoYy',
+          });
+          levelText = parseDedicatedLevel(retryLevelText).locked
+            ? retryLevelText
+            : [levelText, retryLevelText].filter(Boolean).join(' ');
+        }
 
         let limitText = '';
         const needsLimitRead = nameMatch.entry
