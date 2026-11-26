@@ -25,7 +25,12 @@
   let sourceImage = null;
   let ocrWorker = null;
   let openCvPromise = null;
+  let openCvUnavailable = false;
+  let visionPromise = null;
   let recognized = [];
+
+  const VISION_RUNTIME = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/';
+  const VISION_CONFIG = './assets/model/character-classifier.json';
 
   function setStatus(message) {
     status.textContent = message;
@@ -108,7 +113,7 @@
       script.src = src;
       script.async = true;
       script.onload = resolve;
-      script.onerror = () => reject(new Error('OCRライブラリを読み込めませんでした'));
+      script.onerror = () => reject(new Error('画像解析ライブラリを読み込めませんでした'));
       document.head.append(script);
     });
   }
@@ -132,6 +137,7 @@
 
   async function getOpenCv() {
     if (window.cv?.Mat) return window.cv;
+    if (openCvUnavailable) throw new Error('OpenCVはこの環境では利用できません');
     if (openCvPromise) return openCvPromise;
     openCvPromise = (async () => {
       setStatus('画像を整えるOpenCVを読み込んでいます…');
@@ -155,8 +161,138 @@
       return await openCvPromise;
     } catch (error) {
       openCvPromise = null;
+      openCvUnavailable = true;
       throw error;
     }
+  }
+
+  async function getVisionModel() {
+    if (visionPromise) return visionPromise;
+    visionPromise = (async () => {
+      setStatus('キャラ画像の判定モデルを読み込んでいます…');
+      await loadScript(`${VISION_RUNTIME}ort.min.js`, () => Boolean(window.ort?.InferenceSession));
+      window.ort.env.wasm.numThreads = 1;
+      window.ort.env.wasm.wasmPaths = VISION_RUNTIME;
+      const configResponse = await fetch(VISION_CONFIG, { cache: 'force-cache' });
+      if (!configResponse.ok) throw new Error('画像判定の設定を読み込めませんでした');
+      const config = await configResponse.json();
+      const modelUrl = new URL(`./assets/model/${config.model}`, document.baseURI).href;
+      const session = await window.ort.InferenceSession.create(modelUrl, {
+        executionProviders: ['wasm'],
+        graphOptimizationLevel: 'all',
+      });
+      return { session, config };
+    })();
+    try {
+      return await visionPromise;
+    } catch (error) {
+      visionPromise = null;
+      throw error;
+    }
+  }
+
+  function visualViewCanvas(rowCanvas, index, view, size) {
+    const slotWidth = rowCanvas.width / 7;
+    let sourceX = slotWidth * (index + view.left);
+    let sourceY = rowCanvas.height * view.top;
+    let sourceWidth = slotWidth * (view.right - view.left);
+    let sourceHeight = rowCanvas.height * (view.bottom - view.top);
+    if (sourceWidth > sourceHeight) {
+      sourceX += (sourceWidth - sourceHeight) / 2;
+      sourceWidth = sourceHeight;
+    } else if (sourceHeight > sourceWidth) {
+      sourceY += (sourceHeight - sourceWidth) / 2;
+      sourceHeight = sourceWidth;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+    context.fillStyle = '#1b1d28';
+    context.fillRect(0, 0, size, size);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(rowCanvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, size, size);
+    return canvas;
+  }
+
+  function softmaxRow(values) {
+    const maximum = Math.max(...values);
+    const exponentials = values.map(value => Math.exp(value - maximum));
+    const total = exponentials.reduce((sum, value) => sum + value, 0) || 1;
+    return exponentials.map(value => value / total);
+  }
+
+  async function analyzeVisualParty(rowCanvas) {
+    const { session, config } = await getVisionModel();
+    const size = config.image_size;
+    const views = [
+      { left: 0, right: 1, top: 0, bottom: 1 },
+      { left: 0.05, right: 0.95, top: 0, bottom: 1 },
+      { left: 0.08, right: 0.92, top: 0.08, bottom: 0.94 },
+      { left: 0.1, right: 0.9, top: 0.15, bottom: 0.88 },
+    ];
+    const batchSize = 7 * views.length;
+    const channelSize = size * size;
+    const tensorData = new Float32Array(batchSize * 3 * channelSize);
+    const mean = [0.485, 0.456, 0.406];
+    const deviation = [0.229, 0.224, 0.225];
+    let batchIndex = 0;
+    for (let index = 0; index < 7; index += 1) {
+      for (const view of views) {
+        const canvas = visualViewCanvas(rowCanvas, index, view, size);
+        const pixels = canvas.getContext('2d', { willReadFrequently: true })
+          .getImageData(0, 0, size, size).data;
+        const base = batchIndex * 3 * channelSize;
+        for (let pixel = 0; pixel < channelSize; pixel += 1) {
+          const source = pixel * 4;
+          tensorData[base + pixel] = (pixels[source] / 255 - mean[0]) / deviation[0];
+          tensorData[base + channelSize + pixel] = (pixels[source + 1] / 255 - mean[1]) / deviation[1];
+          tensorData[base + channelSize * 2 + pixel] = (pixels[source + 2] / 255 - mean[2]) / deviation[2];
+        }
+        batchIndex += 1;
+      }
+    }
+    const input = new window.ort.Tensor('float32', tensorData, [batchSize, 3, size, size]);
+    const outputMap = await session.run({ image: input });
+    const output = outputMap.logits || Object.values(outputMap)[0];
+    const classCount = config.labels.length;
+    const predictions = [];
+    for (let slot = 0; slot < 7; slot += 1) {
+      const probabilities = Array(classCount).fill(0);
+      for (let viewIndex = 0; viewIndex < views.length; viewIndex += 1) {
+        const rowIndex = slot * views.length + viewIndex;
+        const start = rowIndex * classCount;
+        const logits = Array.from(output.data.slice(start, start + classCount));
+        const values = softmaxRow(logits);
+        values.forEach((value, classIndex) => { probabilities[classIndex] += value / views.length; });
+      }
+      const order = probabilities
+        .map((probability, classIndex) => ({ probability, classIndex }))
+        .sort((left, right) => right.probability - left.probability);
+      const candidates = order.slice(0, 5).map(candidate => {
+        const label = config.labels[candidate.classIndex];
+        const entry = api.catalog.find(item => item.name === label.name);
+        return entry ? { entry, mutation: 'normal', score: candidate.probability, source: 'vision' } : null;
+      }).filter(Boolean);
+      const first = candidates[0] || null;
+      const second = candidates[1] || null;
+      const confidence = first?.score || 0;
+      const margin = confidence - (second?.score || 0);
+      const thresholds = config.recommended_thresholds || { confidence: 0.8, margin: 0.65 };
+      const confidenceThreshold = Math.min(thresholds.confidence, 0.72);
+      const marginThreshold = Math.min(thresholds.margin, 0.5);
+      const jkAccepted = first?.entry?.name === 'JK' && confidence >= 0.5 && margin >= 0.18;
+      predictions.push({
+        catalogId: first?.entry.id || '',
+        entry: first?.entry || null,
+        confidence,
+        margin,
+        candidates,
+        acceptedHigh: Boolean(first && ((confidence >= confidenceThreshold && margin >= marginThreshold) || jkAccepted)),
+      });
+    }
+    return predictions;
   }
 
   async function recognizeText(worker, canvas, options = {}) {
@@ -409,6 +545,63 @@
     };
   }
 
+  function fuseCatalogDecision(ocrDecision, visualDecision) {
+    const ocrEntry = ocrDecision.entry || null;
+    const visualEntry = visualDecision?.entry || null;
+    if (ocrEntry && visualEntry && ocrEntry.id === visualEntry.id) {
+      return {
+        entry: ocrEntry,
+        accepted: true,
+        confidence: Math.max(ocrDecision.confidence, visualDecision.confidence),
+        source: 'ocr+vision',
+        conflict: false,
+      };
+    }
+    if (ocrEntry && (!visualEntry || visualDecision.confidence < 0.42 || visualDecision.margin < 0.12)) {
+      return {
+        entry: ocrEntry,
+        accepted: true,
+        confidence: ocrDecision.confidence,
+        source: 'ocr',
+        conflict: false,
+      };
+    }
+    if (ocrEntry && ocrDecision.confidence >= 0.92 && !visualDecision?.acceptedHigh) {
+      return {
+        entry: ocrEntry,
+        accepted: true,
+        confidence: ocrDecision.confidence,
+        source: 'ocr',
+        conflict: Boolean(visualEntry),
+      };
+    }
+    if (visualEntry && visualDecision.acceptedHigh && (!ocrEntry || ocrDecision.confidence < 0.78)) {
+      return {
+        entry: visualEntry,
+        accepted: true,
+        confidence: visualDecision.confidence,
+        source: 'vision',
+        conflict: Boolean(ocrEntry),
+      };
+    }
+    return {
+      entry: null,
+      accepted: false,
+      confidence: Math.max(ocrDecision.confidence || 0, visualDecision?.confidence || 0),
+      source: 'hold',
+      conflict: Boolean(ocrEntry && visualEntry && ocrEntry.id !== visualEntry.id),
+    };
+  }
+
+  function mergeCandidateSources(ocrMatches, visualMatches) {
+    const candidates = new Map();
+    for (const candidate of [...(ocrMatches || []), ...(visualMatches || [])]) {
+      const previous = candidates.get(candidate.entry.id);
+      if (!previous || candidate.score > previous.score) candidates.set(candidate.entry.id, candidate);
+    }
+    return [...candidates.values()].sort((left, right) => right.score - left.score);
+  }
+
   function rgbToHsv(red, green, blue) {
     const r = red / 255;
     const g = green / 255;
@@ -465,12 +658,23 @@
     const averageValue = valueTotal / samples;
     const activeHueBins = hueBins.filter(count => count >= Math.max(4, saturated * 0.015)).length;
     if (activeHueBins >= 7 && saturatedRatio >= 0.25) return { mutation: 'rainbow', confidence: 0.95 };
-    if (yellow / samples >= 0.38 && brightRatio >= 0.35) return { mutation: 'shiny', confidence: 0.95 };
+    if (yellow / samples >= 0.28 && brightRatio >= 0.35) return { mutation: 'shiny', confidence: 0.95 };
     if (brightRatio < 0.3 && (averageValue <= 0.48 || activeHueBins <= 4)) {
       return { mutation: 'dark', confidence: 0.88 };
     }
     const normalConfidence = saturatedRatio <= 0.16 && brightRatio >= 0.4 ? 0.9 : 0.62;
     return { mutation: 'normal', confidence: normalConfidence };
+  }
+
+  function classifyCatalogMutation(entry, nameTexts, rowCanvas, index) {
+    if (!entry) return { mutation: 'normal', confidence: 0 };
+    if (entry.category === 'normal') return classifyNormalMutation(rowCanvas, index);
+    if (entry.category !== 'illusion') return { mutation: 'normal', confidence: 0 };
+    const text = normalizeText(nameTexts.filter(Boolean).join(' '));
+    if (text.includes('覚醒')) return { mutation: 'awakened', confidence: 0.98 };
+    if (text.includes('闇') || text.includes('漆黒')) return { mutation: 'dark', confidence: 0.98 };
+    const repeatedBaseName = nameTexts.filter(textPart => normalizeText(textPart).includes(normalizeText(entry.name))).length;
+    return { mutation: 'normal', confidence: repeatedBaseName >= 2 ? 0.88 : 0.55 };
   }
 
   function parseLevelDirect(text) {
@@ -488,20 +692,17 @@
   function parseLevel(text, levelText = '') {
     const direct = parseLevelDirect(levelText) || parseLevelDirect(text);
     if (direct) return direct;
-    const cleaned = normalizeText(levelText || text).replace(/[OＯ]/g, '0').replace(/[IＩ]/g, '1');
-    const candidates = [...cleaned.matchAll(/[0-9]{1,3}/g)]
-      .map(match => Number(match[0]))
-      .filter(value => value >= 1 && value <= 150);
-    return candidates.at(-1) || 1;
+    return 1;
   }
 
   function parseDedicatedLevel(text) {
     const direct = parseLevelDirect(text);
     if (direct) return { level: direct, locked: true };
     const cleaned = normalizeText(text).replace(/[OＯ]/g, '0').replace(/[IＩ]/g, '1');
-    const singleDigit = cleaned.match(/^([1-9])$/);
-    return singleDigit
-      ? { level: Number(singleDigit[1]), locked: true }
+    const numericOnly = cleaned.match(/^([0-9]{1,3})$/);
+    const numericLevel = numericOnly ? Number(numericOnly[1]) : null;
+    return numericLevel >= 1 && numericLevel <= 150
+      ? { level: numericLevel, locked: true }
       : { level: null, locked: false };
   }
 
@@ -601,6 +802,19 @@
 
     items.forEach(item => {
       if (!item.observedAttack) return;
+      if (item.characterLocked && item.catalogId) {
+        const entry = api.catalog.find(candidate => candidate.id === item.catalogId);
+        if (!entry) return;
+        const paired = pairAvailable && (entry.id === 'mikon' || entry.id === 'ponja');
+        const fit = bestAttackFit(entry, item, item.observedAttack, paired);
+        if (fit && fit.relativeError <= 0.03) {
+          // Attack verifies the selected character, but must not overwrite an
+          // unreadable Lv.  With mutation left for manual selection, e.g.
+          // shiny Lv1 and normal Lv21 have the same displayed attack.
+          item.attackVerified = true;
+        }
+        return;
+      }
       let candidates = item.candidateMatches.filter(candidate => candidate.score >= 0.26).slice(0, 10);
       const lockedNormalEvidence = item.levelLocked && item.visualMutationConfidence >= 0.75;
       if (lockedNormalEvidence) {
@@ -635,6 +849,7 @@
       item.limitBreak = best.fit.limitBreak;
       item.confidence = Math.max(item.confidence, best.candidate.score);
       item.attackVerified = true;
+      item.decisionSource = item.decisionSource === 'hold' ? 'attack' : item.decisionSource;
     });
   }
 
@@ -728,7 +943,18 @@
 
       const raw = document.createElement('div');
       raw.className = 'raw';
-      raw.textContent = `名前一致度 ${Math.round(item.confidence * 100)}%${item.attackVerified ? '｜表示攻撃力と照合済み' : ''}｜読取：${item.rawText || '文字を読み取れませんでした'}`;
+      const evidence = [
+        `OCR ${Math.round((item.ocrConfidence || 0) * 100)}%`,
+        item.visualAvailable ? `画像 ${Math.round((item.visualConfidence || 0) * 100)}%` : '',
+        item.mutationConfidence >= 0.82 ? `変異 ${Math.round(item.mutationConfidence * 100)}%` : '',
+        item.attackVerified ? '表示攻撃力と照合済み' : '',
+        item.decisionSource === 'hold' ? '判定保留' : '',
+      ].filter(Boolean).join('｜');
+      const visualCandidates = (item.visualCandidates || [])
+        .slice(0, 3)
+        .map(candidate => candidate.entry.name)
+        .join('・');
+      raw.textContent = `${evidence}${visualCandidates ? `｜画像候補：${visualCandidates}` : ''}｜読取：${item.rawText || '文字を読み取れませんでした'}`;
 
       catalog.addEventListener('change', () => {
         item.catalogId = catalog.value;
@@ -754,6 +980,12 @@
     analyzeButton.disabled = true;
     resultsBox.hidden = true;
     try {
+      let visualAvailable = true;
+      const visualTask = analyzeVisualParty(preview).catch(error => {
+        visualAvailable = false;
+        console.warn('画像モデルを使わずOCRで解析を続けます', error);
+        return Array.from({ length: 7 }, () => null);
+      });
       const worker = await getOcrWorker();
       try {
         await getOpenCv();
@@ -774,12 +1006,18 @@
           decision: decideCatalogFromNameReads(nameTexts),
         });
       }
+      const visualPredictions = await visualTask;
 
       for (const record of nameRecords) {
         const { index, nameTexts, decision } = record;
+        const visualDecision = visualPredictions[index];
+        const fusedDecision = fuseCatalogDecision(decision, visualDecision);
         setStatus(`キャラ${index + 1}/7のLv・凸を読み取っています…`);
         const fullText = await recognizeText(worker, makeOcrCanvas(preview, index));
-        let levelText = parseDedicatedLevel(fullText).locked ? fullText : '';
+        // The full-card OCR also contains the attack number and easily turns
+        // fragments such as "4.5M" into a false Lv4.  Only dedicated Lv crops
+        // are allowed to lock the level.
+        let levelText = '';
         if (!parseDedicatedLevel(levelText).locked) {
           const retryLevelText = await recognizeText(worker, makeLevelCanvas(preview, index, true, 'adaptive'), {
             pageMode: '7',
@@ -800,7 +1038,8 @@
         }
 
         let limitText = '';
-        const needsLimitRead = decision.entry && decision.entry.category !== 'normal';
+        const preliminaryEntry = fusedDecision.entry || decision.entry || visualDecision?.entry;
+        const needsLimitRead = preliminaryEntry && preliminaryEntry.category !== 'normal';
         if (needsLimitRead) {
           limitText = parseLimitBreak(fullText) > 0
             ? fullText
@@ -812,18 +1051,32 @@
         }
 
         const item = inferResult(nameTexts, levelText, limitText, fullText, preview, index);
-        item.catalogId = decision.accepted ? decision.entry.id : '';
-        item.confidence = decision.confidence;
-        item.mutation = 'normal';
-        item.limitBreak = decision.entry?.category === 'legend' || decision.entry?.category === 'illusion'
+        item.catalogId = fusedDecision.accepted ? fusedDecision.entry.id : '';
+        item.confidence = fusedDecision.confidence;
+        item.ocrConfidence = decision.confidence;
+        item.visualAvailable = visualAvailable && Boolean(visualDecision);
+        item.visualConfidence = visualDecision?.confidence || 0;
+        item.visualMargin = visualDecision?.margin || 0;
+        item.visualCandidates = visualDecision?.candidates || [];
+        item.candidateMatches = mergeCandidateSources(item.candidateMatches, item.visualCandidates);
+        item.decisionSource = fusedDecision.source;
+        item.decisionConflict = fusedDecision.conflict;
+        const mutationEntry = fusedDecision.entry || preliminaryEntry;
+        const mutationDecision = classifyCatalogMutation(mutationEntry, [...nameTexts, fullText], preview, index);
+        item.visualMutation = mutationDecision.mutation;
+        item.visualMutationConfidence = mutationDecision.confidence;
+        item.mutationConfidence = mutationDecision.confidence;
+        item.mutation = mutationDecision.confidence >= 0.82 ? mutationDecision.mutation : 'normal';
+        item.limitBreak = preliminaryEntry?.category === 'legend' || preliminaryEntry?.category === 'illusion'
           ? parseLimitBreak(nameTexts.join(' '), fullText, limitText)
           : 0;
-        item.characterLocked = decision.accepted;
+        item.characterLocked = fusedDecision.accepted;
         recognized.push(item);
       }
+      reconcileWithAttack(recognized);
       fillUnresolvedNormalByNumbers(recognized);
       renderResults();
-      setStatus('解析しました。キャラ名・Lv・凸を確認してください。変異は手動で選択してください。');
+      setStatus('解析しました。画像・文字・攻撃力を照合しています。キャラ名・Lv・凸・変異を確認してから反映してください。');
     } catch (error) {
       console.error(error);
       setStatus(`解析に失敗しました：${error.message}`);
