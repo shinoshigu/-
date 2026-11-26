@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>最適ステージ・予想時給計算機 v18.6</title>
+  <title>最適ステージ・予想時給計算機 v18.7</title>
   <style>
     :root {
       font-family: system-ui, "Noto Sans JP", sans-serif;
@@ -203,7 +203,7 @@
   </nav>
 
   <section class="panel">
-    <h1>最適ステージ・予想時給計算機 <span class="version">v18.6</span></h1>
+    <h1>最適ステージ・予想時給計算機 <span class="version">v18.7</span></h1>
     <div class="muted">編成と現在の倍率を選ぶだけで、ステージ1～75のジェム・餌・総合効率を比較できます。</div>
   </section>
 
@@ -377,8 +377,8 @@
   const HP = Array.from({ length: 75 }, (_, index) => enemyHpAtStage(index + 1));
   const UNITS = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
   const GEM_UNITS = [['QiD',48],['QD',45],['Td',42],['Dd',39],['Ud',36],['Dc',33],['No',30],['Oc',27],['Sp',24],['Sx',21],['Qi',18],['Qa',15],['T',12],['B',9],['M',6],['K',3]];
-  const STORAGE = 'stage-calculator-v18.6-20261126';
-  const OLD_STORAGES = ['stage-calculator-v18.5-20261126', 'stage-calculator-v18.4-20261126', 'stage-calculator-v18.3-20261126', 'stage-calculator-v18-20261125', 'stage-calculator-v17.8-20261124', 'stage-calculator-v17.7-20261124', 'stage-calculator-v17.6-20261123', 'stage-calculator-v17.5-20261123', 'stage-calculator-v17.4-20261122', 'stage-calculator-v17.3-20261122', 'stage-calculator-v17.2-20261121', 'stage-calculator-v17.1-20261121', 'stage-calculator-v17-20261121', 'stage-calculator-v16-20261121', 'stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
+  const STORAGE = 'stage-calculator-v18.7-20261127';
+  const OLD_STORAGES = ['stage-calculator-v18.6-20261126', 'stage-calculator-v18.5-20261126', 'stage-calculator-v18.4-20261126', 'stage-calculator-v18.3-20261126', 'stage-calculator-v18-20261125', 'stage-calculator-v17.8-20261124', 'stage-calculator-v17.7-20261124', 'stage-calculator-v17.6-20261123', 'stage-calculator-v17.5-20261123', 'stage-calculator-v17.4-20261122', 'stage-calculator-v17.3-20261122', 'stage-calculator-v17.2-20261121', 'stage-calculator-v17.1-20261121', 'stage-calculator-v17-20261121', 'stage-calculator-v16-20261121', 'stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
 
   const CHARACTERS = {
     none: { label: '特性なし', trait: 'none' },
@@ -414,17 +414,20 @@
     { id:'kabochild', name:'カボチャイルド', hp:3.6e6, attack:182e3, character:'kabochild' },
     { id:'kyonshina', name:'キョンシーナ', hp:32.4e6, attack:1.6e6, character:'kyonshina' },
     { id:'yamata', name:'ヤマタノコロチ', hp:139.5e6, attack:6.9e6, character:'yamata' },
-    { id:'ayatsuritch', name:'アヤツリッチ', hp:200.9e6, attack:10e6, character:'ayatsuritch' },
+    // Estimated unabridged base values from the in-game attack readouts:
+    // Ayatsuritch Lv129/130 = 74.3M/74.8M, King Nidra Lv100/113 = 123.9M/137.5M.
+    { id:'ayatsuritch', name:'アヤツリッチ', hp:200.9e6, attack:10.047e6, character:'ayatsuritch' },
     { id:'mikon', name:'ミコン', hp:32.4e6, attack:1.6e6, character:'mikon' },
     { id:'ponja', name:'ポンジャ', hp:32.4e6, attack:1.6e6, character:'ponja' },
     { id:'jk', name:'JK', hp:167.4e6, attack:8.3e6, character:'jk' },
-    { id:'kingNidra', name:'キングニドラ', hp:416.7e6, attack:20.8e6, character:'kingNidra' },
+    { id:'kingNidra', name:'キングニドラ', hp:416.7e6, attack:20.837e6, character:'kingNidra' },
   ].map(c => ({ ...c, category:'legend', type:'legend' }));
   const ILLUSION_CATALOG = [
     { id:'gomera', name:'ゴチャメラ', hp:587.9e3, attack:29.3e3, character:'none' },
     { id:'doppa', name:'ドッパー', hp:3.6e6, attack:182e3, character:'doppa' },
     { id:'charlotte', name:'シャーロット', hp:22.5e6, attack:1.1e6, character:'none' },
-    { id:'lovril', name:'ラブリル', hp:139.5e6, attack:6.9e6, character:'lovril' },
+    // Awakened Lv100/0 and Lv150/10 show 59.7M and 127.3M.
+    { id:'lovril', name:'ラブリル', hp:139.5e6, attack:6.977e6, character:'lovril' },
     { id:'kubinight', name:'クビナイト', hp:241.1e6, attack:12e6, character:'kubinight' },
   ].map(c => ({ ...c, category:'illusion', type:'legend' }));
   const CATALOG = [...NORMAL_CATALOG, ...LEGEND_CATALOG, ...ILLUSION_CATALOG];
@@ -562,6 +565,14 @@
   function limitBreakMultiplier(c) {
     return 1 + 0.05 * limitBreakCount(c);
   }
+  function levelGrowth(level) { return 1 + ((Number(level) || 1) - 1) / 20; }
+  function attackAtLevel(entry, mutation, level, limitBreak, paired, enemyType = 'stage') {
+    // Paired Lv120/125 at 10 limit breaks display 104.7M/108.5M.
+    const base = paired && (entry.id === 'mikon' || entry.id === 'ponja') ? 10.049e6 : entry.attack;
+    const form = {category:entry.category, mutation, limitBreak};
+    return base * levelGrowth(level) * mutationMultiplier(form)
+      * (enemyType === 'boss' ? 1 : limitBreakMultiplier(form));
+  }
   function bossDodgeRate(c) { return BOSS_MODEL.dodgePerLimitBreak * limitBreakCount(c); }
   function resolveParty(chars, enemyType = state.enemyType) {
     const mikonIndexes = chars.map((c,i) => c.category === 'legend' && c.catalogId === 'mikon' ? i : -1).filter(i => i >= 0);
@@ -570,15 +581,14 @@
     const truePowerIndexes = new Set([...mikonIndexes.slice(0,pairCount), ...ponjaIndexes.slice(0,pairCount)]);
     return chars.map((c,index) => {
       const entry = CATALOG_BY_ID[c.catalogId];
-      const levelMultiplier = 1 + 0.05 * ((Number(c.level) || 1) - 1);
+      const levelMultiplier = levelGrowth(c.level);
       if (entry && entry.category === c.category) {
         const truePair = truePowerIndexes.has(index);
         const baseHp = truePair ? 200.9e6 : entry.hp;
-        const baseAttack = truePair ? 10e6 : entry.attack;
         const growthMultiplier = levelMultiplier * mutationMultiplier(c);
         const limitMultiplier = limitBreakMultiplier(c);
-        const attackLimitMultiplier = enemyType === 'boss' ? 1 : limitMultiplier;
-        return { power:baseAttack*growthMultiplier*attackLimitMultiplier, hp:baseHp*growthMultiplier*limitMultiplier, type:entry.type, character:entry.character, name:entry.name, truePair, bossDodge:bossDodgeRate(c) };
+        const power = attackAtLevel(entry, c.mutation, c.level, c.limitBreak, truePair, enemyType);
+        return { power, hp:baseHp*growthMultiplier*limitMultiplier, type:entry.type, character:entry.character, name:entry.name, truePair, bossDodge:bossDodgeRate(c) };
       }
       if (c.category === 'normal' || c.category === 'legend' || c.category === 'illusion') {
         return { power:0, hp:0, type:c.category === 'normal' ? 'normal' : 'legend', character:'none', name:'未選択', truePair:false, bossDodge:bossDodgeRate(c) };
@@ -1238,9 +1248,9 @@
     renderInputs(); save();
   });
   $('download').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify({ version: '18.6', ...state }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: '18.7', ...state }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob), a = document.createElement('a');
-    a.href = url; a.download = 'moncolle-calculator-v18.6-settings.json'; a.click();
+    a.href = url; a.download = 'moncolle-calculator-v18.7-settings.json'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('load').addEventListener('click', () => $('file').click());
@@ -1253,6 +1263,7 @@
   });
 
   window.moncolleCalculator = {
+    attackAtLevel,
     catalog: CATALOG.map(entry => ({
       id: entry.id,
       no: entry.no || null,
@@ -1291,6 +1302,7 @@
   scheduleCompute();
 })();
 </script>
-<script src="./assets/js/image-import.js" defer></script>
+<script src="./assets/js/level-label.js?v=18.7" defer></script>
+<script src="./assets/js/image-import.js?v=18.7" defer></script>
 </body>
 </html>
