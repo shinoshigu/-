@@ -192,17 +192,19 @@
     const wideCrop = rowCanvas.width / rowCanvas.height >= 5.5;
     return makeTextCanvas(rowCanvas, index, {
       top: 0,
-      bottom: wideCrop ? 0.43 : 0.35,
+      bottom: wideCrop ? 0.32 : 0.3,
+      left: 0.03,
+      right: 0.97,
       variant: 'loose',
     });
   }
 
-  function makeLevelCanvas(rowCanvas, index) {
+  function makeLevelCanvas(rowCanvas, index, hasAttackStats) {
     return makeTextCanvas(rowCanvas, index, {
-      top: 0.34,
-      bottom: 0.92,
-      left: 0.2,
-      right: 1,
+      top: hasAttackStats ? 0.42 : 0.46,
+      bottom: hasAttackStats ? 0.79 : 0.98,
+      left: 0.28,
+      right: 0.97,
       variant: 'loose',
     });
   }
@@ -210,15 +212,19 @@
   function makeLimitCanvas(rowCanvas, index) {
     return makeTextCanvas(rowCanvas, index, {
       top: 0,
-      bottom: 0.34,
+      bottom: 0.28,
+      left: 0.08,
+      right: 0.95,
       variant: 'loose',
     });
   }
 
   function makeAttackCanvas(rowCanvas, index) {
     return makeTextCanvas(rowCanvas, index, {
-      top: 0.68,
+      top: 0.79,
       bottom: 1,
+      left: 0.03,
+      right: 0.97,
       variant: 'bright',
     });
   }
@@ -602,8 +608,9 @@
     try {
       const worker = await getOcrWorker();
       recognized = [];
+      const primaryRecords = [];
       for (let index = 0; index < 7; index += 1) {
-        setStatus(`キャラ${index + 1}/7を読み取っています…`);
+        setStatus(`キャラ${index + 1}/7の名前を読み取っています…`);
         const primaryText = await recognizeText(worker, makeOcrCanvas(preview, index));
         const nameTexts = [primaryText];
         let nameMatch = findBestCatalog(nameTexts);
@@ -612,8 +619,16 @@
           nameTexts.push(retryText);
           nameMatch = findBestCatalog(nameTexts);
         }
+        primaryRecords.push({ index, primaryText, nameTexts, nameMatch });
+      }
 
-        const levelText = await recognizeText(worker, makeLevelCanvas(preview, index), {
+      const primaryAttackCount = primaryRecords.filter(record => parseAttack(record.primaryText)).length;
+      const hasAttackStats = primaryAttackCount >= 2 || preview.width / preview.height < 5.7;
+
+      for (const record of primaryRecords) {
+        const { index, primaryText, nameTexts, nameMatch } = record;
+        setStatus(`キャラ${index + 1}/7のLv・凸を読み取っています…`);
+        const levelText = await recognizeText(worker, makeLevelCanvas(preview, index, hasAttackStats), {
           pageMode: '7',
           whitelist: '0123456789LlVvIiOoYy',
         });
@@ -628,8 +643,7 @@
 
         let attackText = '';
         const attackFromPrimary = parseAttack(primaryText);
-        const cropRatio = preview.width / preview.height;
-        if (!attackFromPrimary && (cropRatio < 5.5 || !nameMatch.entry || nameMatch.score < 0.72)) {
+        if (!attackFromPrimary && hasAttackStats) {
           attackText = await recognizeText(worker, makeAttackCanvas(preview, index), {
             pageMode: '7',
             whitelist: '0123456789.,KMBTkmbt',
