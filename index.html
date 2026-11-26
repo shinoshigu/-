@@ -92,6 +92,35 @@
     .manual-fields { display: grid; grid-template-columns: minmax(120px,1.4fr) minmax(80px,1fr) 70px minmax(80px,1fr) 70px minmax(150px,1.4fr); gap: 6px; grid-column: 2 / -1; }
     .manual-fields > :last-child { grid-column: 1 / -1; }
     .catalog-help { margin: 8px 0 0; }
+    .image-import-box {
+      margin: 0 0 14px;
+      padding: 14px;
+      border: 1px solid #d7e1ec;
+      border-radius: 9px;
+      background: #f8fbff;
+    }
+    .image-import-box h3 { margin: 0 0 10px; font-size: 1rem; }
+    .image-import-controls { display: grid; grid-template-columns: minmax(170px,1fr) minmax(170px,1fr) auto; gap: 8px; align-items: end; }
+    .image-import-controls label, .crop-control label { display: block; font-size: .82rem; font-weight: 650; margin-bottom: 4px; }
+    .image-preview { display: block; width: 100%; max-height: 260px; margin-top: 12px; object-fit: contain; background: #111722; border-radius: 7px; }
+    .crop-controls { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin-top: 10px; }
+    .crop-control input { padding: 0; }
+    .image-status { min-height: 1.5em; margin: 9px 0 0; color: #42566d; font-size: .86rem; }
+    .image-results { margin-top: 12px; display: grid; gap: 7px; }
+    .image-result-row {
+      display: grid;
+      grid-template-columns: 34px minmax(180px,1.6fr) minmax(105px,.8fr) 76px 70px;
+      gap: 7px;
+      align-items: center;
+      padding: 8px;
+      border: 1px solid #e0e7ef;
+      border-radius: 7px;
+      background: #fff;
+    }
+    .image-result-row .raw { grid-column: 2 / -1; color: #687a8e; font-size: .76rem; overflow-wrap: anywhere; }
+    .image-result-row .slot-no { font-weight: 750; color: #53667b; text-align: center; }
+    .image-result-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    [hidden] { display: none !important; }
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
     .stat { background: #eef5ff; border-radius: 9px; padding: 15px; }
     .stat .value { font-size: 1.8rem; font-weight: 800; color: #1557a2; overflow-wrap: anywhere; }
@@ -135,6 +164,14 @@
       .manual-fields { grid-column: 2 / -1; grid-template-columns: 1fr 58px 1fr 58px; }
       .char .name { font-size: .78rem; }
       input, select { padding: 9px 26px 9px 6px; font-size: .88rem; }
+      .image-import-controls { grid-template-columns: 1fr 1fr; }
+      .image-import-controls button { grid-column: 1 / -1; }
+      .crop-controls { grid-template-columns: 1fr 1fr; }
+      .image-result-row { grid-template-columns: 30px minmax(0,1fr) 88px; }
+      .image-result-row .import-level, .image-result-row .import-limit { grid-row: 2; }
+      .image-result-row .import-level { grid-column: 2; }
+      .image-result-row .import-limit { grid-column: 3; }
+      .image-result-row .raw { grid-column: 2 / -1; }
       .grid { grid-template-columns: 1fr 1fr; }
       .stats { grid-template-columns: 1fr; }
       .stat .value { font-size: 1.55rem; }
@@ -161,6 +198,44 @@
 
   <section class="panel">
     <h2>7キャラの編成</h2>
+    <div class="image-import-box">
+      <h3>編成画像から入力</h3>
+      <div class="image-import-controls">
+        <div>
+          <label for="partyImageMode">画像の種類</label>
+          <select id="partyImageMode">
+            <option value="auto">自動判定</option>
+            <option value="full">バッグ全体</option>
+            <option value="party">編成部分のみ</option>
+          </select>
+        </div>
+        <div>
+          <label for="partyImageFile">スクリーンショット</label>
+          <input id="partyImageFile" type="file" accept="image/png,image/jpeg,image/webp">
+        </div>
+        <button class="primary" id="partyImageAnalyze" type="button" disabled>画像を解析</button>
+      </div>
+      <p class="muted">バッグ全体と編成部分だけの画像に対応します。画像は外部へ送信せず、このブラウザ内で処理します。初回解析時だけOCRデータを読み込みます。</p>
+      <div id="partyImageWorkspace" hidden>
+        <canvas class="image-preview" id="partyImagePreview" aria-label="解析する編成部分のプレビュー"></canvas>
+        <details>
+          <summary>切り抜き範囲を調整</summary>
+          <div class="crop-controls">
+            <div class="crop-control"><label for="partyCropX">左位置</label><input id="partyCropX" type="range" min="0" max="90" value="26"></div>
+            <div class="crop-control"><label for="partyCropY">上位置</label><input id="partyCropY" type="range" min="0" max="90" value="18"></div>
+            <div class="crop-control"><label for="partyCropW">横幅</label><input id="partyCropW" type="range" min="10" max="100" value="54"></div>
+            <div class="crop-control"><label for="partyCropH">高さ</label><input id="partyCropH" type="range" min="10" max="100" value="27"></div>
+          </div>
+        </details>
+        <p class="image-status" id="partyImageStatus" role="status"></p>
+        <div id="partyImageResults" hidden>
+          <div class="image-results" id="partyImageResultRows"></div>
+          <div class="image-result-actions">
+            <button class="primary" id="partyImageApply" type="button">この7体を編成に反映</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="chars" id="chars"></div>
     <p class="muted catalog-help">カテゴリ→キャラ→変異→Lv・凸の順に選ぶと、HP・攻撃力・特性を自動設定します。名前と変異はマウスホイールでも変更できます。</p>
   </section>
@@ -1164,9 +1239,43 @@
     event.target.value = '';
   });
 
+  window.moncolleCalculator = {
+    catalog: CATALOG.map(entry => ({
+      id: entry.id,
+      no: entry.no || null,
+      name: entry.name,
+      label: catalogLabel(entry),
+      category: entry.category,
+    })),
+    mutations: Object.fromEntries(Object.entries(MUTATIONS).map(([category, values]) => [
+      category,
+      Object.entries(values).map(([id, [label]]) => ({ id, label })),
+    ])),
+    applyImportedParty(items) {
+      if (!Array.isArray(items)) return;
+      items.slice(0, 7).forEach((item, index) => {
+        const entry = CATALOG_BY_ID[item.catalogId];
+        if (!entry) return;
+        const next = emptyChar();
+        next.category = entry.category;
+        next.catalogId = entry.id;
+        next.level = String(Math.min(150, Math.max(1, Math.round(Number(item.level) || 1))));
+        next.limitBreak = String(entry.category === 'legend' || entry.category === 'illusion'
+          ? Math.min(10, Math.max(0, Math.round(Number(item.limitBreak) || 0)))
+          : 0);
+        next.mutation = Object.hasOwn(MUTATIONS[entry.category] || {}, item.mutation) ? item.mutation : 'normal';
+        next.manualType = entry.category === 'normal' ? 'normal' : 'legend';
+        state.chars[index] = next;
+      });
+      renderInputs();
+      save();
+    },
+  };
+
   renderInputs();
   scheduleCompute();
 })();
 </script>
+<script src="./assets/js/image-import.js" defer></script>
 </body>
 </html>
