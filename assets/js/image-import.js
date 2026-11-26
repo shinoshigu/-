@@ -311,6 +311,15 @@
       return;
     }
     const base = normalizedCropValues(suggestedCropValues());
+    const survey = makeCropCanvas({x:0, y:0, width:100, height:100}, Math.min(2000, sourceImage.naturalWidth));
+    const labelCrop = window.moncolleLevelLabels?.findPartyCrop(survey);
+    if (labelCrop) {
+      setCropValues(labelCrop);
+      drawPreview();
+      cropWasAdjusted = false;
+      autoCropRefined = true;
+      return;
+    }
     const candidates = [];
     for (const yOffset of [-4.5, -3, -1.5, 0, 1.5, 3, 4.5]) {
       candidates.push(normalizedCropValues({ ...base, y: base.y + yOffset }));
@@ -504,9 +513,12 @@
 
   function makeLevelCanvas(rowCanvas, index, hasAttackStats, variant = 'loose') {
     return makeTextCanvas(rowCanvas, index, {
-      top: hasAttackStats ? 0.42 : 0.46,
-      bottom: hasAttackStats ? 0.86 : 0.98,
-      left: 0.28,
+      // Lv is always drawn at the lower-right of the character card. The old
+      // crop included most of the illustration, so OCR often reduced Lv150
+      // to a bare 1. Keep this crop on the label itself.
+      top: hasAttackStats ? 0.54 : 0.58,
+      bottom: hasAttackStats ? 0.82 : 0.92,
+      left: 0.5,
       right: 0.97,
       variant,
     });
@@ -515,9 +527,9 @@
   function makeLimitCanvas(rowCanvas, index, variant = 'loose') {
     return makeTextCanvas(rowCanvas, index, {
       top: 0,
-      bottom: 0.28,
-      left: 0.08,
-      right: 0.95,
+      bottom: 0.16,
+      left: 0.28,
+      right: 0.78,
       variant,
     });
   }
@@ -854,17 +866,10 @@
   }
 
   function parseLevelDirect(text) {
-    const cleaned = String(text || '')
-      .toUpperCase()
-      .replace(/[０-９]/g, character => String.fromCharCode(character.charCodeAt(0) - 0xFEE0))
-      .replace(/[Ｌ]/g, 'L')
-      .replace(/[Ｖ]/g, 'V')
-      .replace(/[|!ＩⅠI]/g, '1')
-      .replace(/[OＯ]/g, '0');
-    const explicit = cleaned.match(/L\s*[VY]\s*[^0-9]{0,3}([0-9]{1,3})/);
-    if (explicit) return Math.min(150, Math.max(1, Number(explicit[1])));
-    const direct = cleaned.match(/(?:L|1|I)?\s*[VY]\s*[^0-9]{0,3}([0-9]{1,3})/);
-    return direct ? Math.min(150, Math.max(1, Number(direct[1]))) : null;
+    const cleaned = String(text || '').normalize('NFKC').toUpperCase();
+    const match = cleaned.match(/[L1I|]\s*[VY]\s*([0-9OI]{1,3})(?![0-9OI]|[.,]\s*\d|\s*[KMBT]\b)/);
+    const value = match && Number(match[1].replace(/O/g,'0').replace(/I/g,'1'));
+    return value >= 1 && value <= 150 ? value : null;
   }
 
   function parseLevel(text, levelText = '') {
@@ -875,19 +880,50 @@
 
   function parseDedicatedLevel(text) {
     const direct = parseLevelDirect(text);
-    if (direct) return { level: direct, locked: true };
+    if (direct) return { level: direct, locked: true, source: 'explicit' };
     const cleaned = normalizeText(text).replace(/[OＯ]/g, '0').replace(/[IＩ]/g, '1');
     const numericOnly = cleaned.match(/^([0-9]{1,3})$/);
     const numericLevel = numericOnly ? Number(numericOnly[1]) : null;
     return numericLevel >= 1 && numericLevel <= 150
-      ? { level: numericLevel, locked: true }
-      : { level: null, locked: false };
+      // A bare digit is only a hint: Lv150/Lv120/Lv100 commonly become 1 or 2.
+      ? { level: numericLevel, locked: false, source: 'numeric' }
+      : { level: null, locked: false, source: 'none' };
+  }
+
+  async function readLevelText(worker, index, fullText) {
+    const wholeCard = parseLevelDirect(fullText);
+    const votes = new Map();
+    let numericHint = '';
+    for (const variant of ['loose', 'strict', 'adaptive']) {
+      const text = await recognizeText(worker, makeLevelCanvas(preview, index, true, variant), {
+        pageMode:'7', whitelist:'0123456789LlVvIiOoYy',
+      });
+      const read = parseDedicatedLevel(text);
+      if (read.locked) {
+        votes.set(read.level, (votes.get(read.level) || 0) + 1);
+        if (read.level === wholeCard || votes.get(read.level) >= 2) return `Lv${read.level}`;
+      } else if (read.level) numericHint = String(read.level);
+    }
+    if (wholeCard && (!votes.size || votes.has(wholeCard))) return `Lv${wholeCard}`;
+    if (!wholeCard && votes.size === 1) return `Lv${votes.keys().next().value}`;
+    return numericHint;
   }
 
   function parseLimitBreak(...texts) {
     const cleaned = normalizeText(texts.filter(Boolean).join(' ')).replace(/[OＯ]/g, '0');
     const match = cleaned.match(/([0-9]{1,2})凸/);
     return match ? Math.min(10, Math.max(0, Number(match[1]))) : 0;
+  }
+
+  function parseDedicatedLimit(text) {
+    const cleaned = normalizeText(text).replace(/[OＯ]/g, '0').replace(/[IＩ|!]/g, '1');
+    const explicit = cleaned.match(/([0-9]{1,2})凸/);
+    if (explicit) return { value: Math.min(10, Math.max(0, Number(explicit[1]))), locked: true };
+    const numericOnly = cleaned.match(/^([0-9]{1,2})$/);
+    const value = numericOnly ? Number(numericOnly[1]) : null;
+    return value >= 1 && value <= 10
+      ? { value, locked: true }
+      : { value: 0, locked: false };
   }
 
   function parseAttack(...texts) {
@@ -906,9 +942,10 @@
     const mutation = 'normal';
     const allNameText = nameTexts.filter(Boolean).join(' / ');
     const dedicatedLevel = parseDedicatedLevel(levelText);
+    const dedicatedLimit = parseDedicatedLimit(limitText);
     const limitBreak = match.entry?.category === 'normal'
       ? 0
-      : parseLimitBreak(allNameText, limitText);
+      : (parseLimitBreak(allNameText, limitText) || dedicatedLimit.value);
     return {
       catalogId: match.entry?.id || '',
       mutation,
@@ -920,6 +957,9 @@
       candidateMatches: matches.slice(0, 10),
       attackVerified: false,
       levelLocked: dedicatedLevel.locked,
+      levelEvidence: dedicatedLevel.source,
+      limitLocked: match.entry?.category !== 'normal'
+        && (dedicatedLimit.locked || parseLimitBreak(allNameText, limitText) > 0),
       visualMutation: 'normal',
       visualMutationConfidence: 0,
     };
@@ -929,36 +969,32 @@
     return api.mutations[entry.category] || [{ id: 'normal', label: '—', multiplier: 1 }];
   }
 
-  function expectedAttack(entry, mutation, level, limitBreak, paired) {
-    const pairBase = paired && (entry.id === 'mikon' || entry.id === 'ponja') ? 10e6 : entry.attack;
-    const mutationMultiplier = mutationOptions(entry).find(option => option.id === mutation)?.multiplier || 1;
-    const levelMultiplier = 1 + 0.05 * (level - 1);
-    const limitMultiplier = entry.category === 'legend' || entry.category === 'illusion'
-      ? 1 + 0.05 * limitBreak
-      : 1;
-    return pairBase * mutationMultiplier * levelMultiplier * limitMultiplier;
-  }
+  const expectedAttack = api.attackAtLevel;
 
   function bestAttackFit(entry, item, observedAttack, paired) {
     let best = null;
-    const levels = item.levelLocked
-      ? [Math.min(150, Math.max(1, Math.round(Number(item.level) || 1)))]
-      : Array.from({ length: 150 }, (_, index) => index + 1);
+    const levels = item.levelLocked ? [item.level] : Array.from({length:150}, (_, i) => i+1);
     const limits = entry.category === 'legend' || entry.category === 'illusion'
-      ? Array.from({ length: 11 }, (_, index) => index)
+      ? (item.limitLocked
+        ? [Math.min(10, Math.max(0, Math.round(Number(item.limitBreak) || 0)))]
+        : Array.from({ length: 11 }, (_, index) => index))
       : [0];
-    let mutations = entry.category === 'normal' && item.visualMutationConfidence >= 0.75
+    let mutations = item.visualMutationConfidence >= 0.82
       ? mutationOptions(entry).filter(option => option.id === item.visualMutation)
       : mutationOptions(entry);
     if (!mutations.length) mutations = mutationOptions(entry);
+    const displayStep = 10 ** (3*Math.floor(Math.log10(observedAttack)/3)-1);
     for (const mutation of mutations) {
       for (const level of levels) {
         for (const limitBreak of limits) {
           const expected = expectedAttack(entry, mutation.id, level, limitBreak, paired);
-          const relativeError = Math.abs(expected - observedAttack) / observedAttack;
-          const preferencePenalty = Math.abs(level - item.level) * 0.00015
+          // The game truncates to tenths of K/M/etc and hides a trailing .0.
+          // E.g. 6.9M represents the interval [6.9M,7.0M).
+          const relativeError = Math.max(0, observedAttack-expected, expected-observedAttack-displayStep) / observedAttack;
+          const levelPenalty = item.levelEvidence === 'explicit' ? 0.0003 : 0.00008;
+          const preferencePenalty = Math.abs(level - item.level) * levelPenalty
             + (mutation.id === item.mutation ? 0 : 0.012)
-            + Math.abs(limitBreak - item.limitBreak) * 0.0015;
+            + Math.abs(limitBreak - item.limitBreak) * (item.limitLocked ? 0.006 : 0.0015);
           const score = relativeError + preferencePenalty;
           if (!best || score < best.score) {
             best = { mutation: mutation.id, level, limitBreak, relativeError, score };
@@ -970,27 +1006,27 @@
   }
 
   function reconcileWithAttack(items) {
-    const possibleIds = new Set();
-    items.forEach(item => {
-      if (item.catalogId) possibleIds.add(item.catalogId);
-      item.candidateMatches
-        .filter(candidate => candidate.score >= 0.32)
-        .forEach(candidate => possibleIds.add(candidate.entry.id));
-    });
-    const pairAvailable = possibleIds.has('mikon') && possibleIds.has('ponja');
+    const mikons = items.filter(i => i.catalogId === 'mikon');
+    const ponjas = items.filter(i => i.catalogId === 'ponja');
+    const pairCount = Math.min(mikons.length, ponjas.length);
+    const pairs = new Set([...mikons.slice(0,pairCount), ...ponjas.slice(0,pairCount)]);
 
     items.forEach(item => {
       if (!item.observedAttack) return;
       if (item.characterLocked && item.catalogId) {
         const entry = api.catalog.find(candidate => candidate.id === item.catalogId);
         if (!entry) return;
-        const paired = pairAvailable && (entry.id === 'mikon' || entry.id === 'ponja');
+        const paired = pairs.has(item);
         const fit = bestAttackFit(entry, item, item.observedAttack, paired);
-        if (fit && fit.relativeError <= 0.03) {
-          // Attack verifies the selected character, but must not overwrite an
-          // unreadable Lv.  With mutation left for manual selection, e.g.
-          // shiny Lv1 and normal Lv21 have the same displayed attack.
+        if (fit && fit.relativeError <= 0.035) {
+          // The selected character and the card background remove most of the
+          // numerical ambiguity. Prefer the Lv/limit combination that actually
+          // reproduces the displayed attack over a truncated OCR result.
           item.attackVerified = true;
+          if (!item.levelLocked) item.levelEvidence = 'estimate';
+          item.level = fit.level;
+          item.limitBreak = fit.limitBreak;
+          if (item.visualMutationConfidence < 0.82) item.mutation = fit.mutation;
         }
         return;
       }
@@ -1007,7 +1043,7 @@
       let best = null;
       const evaluations = [];
       for (const candidate of candidates) {
-        const paired = pairAvailable && (candidate.entry.id === 'mikon' || candidate.entry.id === 'ponja');
+        const paired = pairs.has(item);
         const fit = bestAttackFit(candidate.entry, item, item.observedAttack, paired);
         const attackScore = Math.max(0, 1 - fit.relativeError / 0.12);
         const combinedScore = candidate.score * 0.55 + attackScore * 0.45;
@@ -1025,6 +1061,7 @@
         if (!uniqueAttackMatch) return;
       }
       item.catalogId = best.candidate.entry.id;
+      if (!item.levelLocked) item.levelEvidence = 'estimate';
       item.mutation = best.fit.mutation;
       item.level = best.fit.level;
       item.limitBreak = best.fit.limitBreak;
@@ -1038,11 +1075,10 @@
     const normalMutations = api.mutations.normal || [{ id: 'normal', multiplier: 1 }];
     items.forEach(item => {
       if (item.catalogId || !item.levelLocked || !item.observedAttack) return;
-      const levelMultiplier = 1 + 0.05 * (item.level - 1);
       const matches = [];
       api.catalog.filter(entry => entry.category === 'normal').forEach(entry => {
         normalMutations.forEach(mutation => {
-          const expected = entry.attack * mutation.multiplier * levelMultiplier;
+          const expected = expectedAttack(entry, mutation.id, item.level, 0, false);
           matches.push({
             entry,
             relativeError: Math.abs(expected - item.observedAttack) / item.observedAttack,
@@ -1147,6 +1183,7 @@
       const raw = document.createElement('div');
       raw.className = 'raw';
       const evidence = [
+        {glyph:'Lvを画像で確認', explicit:'Lvを文字で確認', estimate:'Lvは攻撃力から推定・要確認'}[item.levelEvidence] || 'Lv要確認',
         `OCR ${Math.round((item.ocrConfidence || 0) * 100)}%`,
         item.visualAvailable ? `画像 ${Math.round((item.visualConfidence || 0) * 100)}%` : '',
         item.mutationConfidence >= 0.82 ? `変異 ${Math.round(item.mutationConfidence * 100)}%` : '',
@@ -1206,6 +1243,7 @@
         console.warn('OpenCVを使わずに解析を続けます', error);
       }
       recognized = [];
+      const glyphLevels = window.moncolleLevelLabels?.readRow(preview) || [];
       const nameRecords = [];
       for (let index = 0; index < 7; index += 1) {
         setStatus(`キャラ${index + 1}/7の名前を読み取っています…`);
@@ -1240,30 +1278,9 @@
           }
         }
         const fusedDecision = fuseCatalogDecision(expandedDecision, visualDecision);
-        // The full-card OCR also contains the attack number and easily turns
-        // fragments such as "4.5M" into a false Lv4.  Only dedicated Lv crops
-        // are allowed to lock the level.
-        let levelText = '';
-        if (!parseDedicatedLevel(levelText).locked) {
-          const retryLevelText = await recognizeText(worker, makeLevelCanvas(preview, index, true, 'adaptive'), {
-            pageMode: '7',
-            whitelist: '0123456789LlVvIiOoYy',
-          });
-          levelText = parseDedicatedLevel(retryLevelText).locked
-            ? retryLevelText
-            : [levelText, retryLevelText].filter(Boolean).join(' ');
-        }
-        if (!parseDedicatedLevel(levelText).locked) {
-          const cardOnlyLevelText = await recognizeText(worker, makeLevelCanvas(preview, index, false, 'strict'), {
-            pageMode: '7',
-            whitelist: '0123456789LlVvIiOoYy',
-          });
-          levelText = parseDedicatedLevel(cardOnlyLevelText).locked
-            ? cardOnlyLevelText
-            : [levelText, cardOnlyLevelText].filter(Boolean).join(' ');
-        }
-        const explicitFullLevel = parseLevelDirect(fullText);
-        if (explicitFullLevel) levelText = `Lv${explicitFullLevel}`;
+        const levelText = glyphLevels[index]
+          ? `Lv${glyphLevels[index]}`
+          : await readLevelText(worker, index, fullText);
 
         let limitText = '';
         const preliminaryEntry = fusedDecision.entry || expandedDecision.entry || visualDecision?.entry;
@@ -1271,14 +1288,23 @@
         if (needsLimitRead) {
           limitText = parseLimitBreak(fullText) > 0
             ? fullText
-            : await recognizeText(worker, makeLimitCanvas(preview, index), { pageMode: '7' });
-          if (parseLimitBreak(limitText) === 0) {
-            const retryLimitText = await recognizeText(worker, makeLimitCanvas(preview, index, 'adaptive'), { pageMode: '7' });
-            limitText = [limitText, retryLimitText].filter(Boolean).join(' ');
+            : await recognizeText(worker, makeLimitCanvas(preview, index), {
+              pageMode: '7',
+              whitelist: '0123456789',
+            });
+          if (parseLimitBreak(limitText) === 0 && !parseDedicatedLimit(limitText).locked) {
+            const retryLimitText = await recognizeText(worker, makeLimitCanvas(preview, index, 'adaptive'), {
+              pageMode: '7',
+              whitelist: '0123456789',
+            });
+            limitText = parseDedicatedLimit(retryLimitText).locked
+              ? `${parseDedicatedLimit(retryLimitText).value}凸`
+              : [limitText, retryLimitText].filter(Boolean).join(' ');
           }
         }
 
         const item = inferResult([...nameTexts, fullText], levelText, limitText, fullText, preview, index);
+        if (glyphLevels[index]) item.levelEvidence = 'glyph';
         item.catalogId = fusedDecision.accepted ? fusedDecision.entry.id : '';
         item.confidence = fusedDecision.confidence;
         item.ocrConfidence = expandedDecision.confidence;
@@ -1304,8 +1330,12 @@
         item.backgroundFeatures = mutationBackgroundFeatures(preview, index);
         item.grayscaleScore = grayscaleCardScore(preview, index);
         item.limitBreak = preliminaryEntry?.category === 'legend' || preliminaryEntry?.category === 'illusion'
-          ? parseLimitBreak(nameTexts.join(' '), fullText, limitText)
+          ? (parseLimitBreak(nameTexts.join(' '), fullText, limitText) || parseDedicatedLimit(limitText).value)
           : 0;
+        item.limitLocked = Boolean(item.limitBreak > 0 && (
+          parseLimitBreak(nameTexts.join(' '), fullText, limitText) > 0
+          || parseDedicatedLimit(limitText).locked
+        ));
         item.characterLocked = fusedDecision.accepted;
         recognized.push(item);
       }
