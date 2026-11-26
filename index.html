@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>最適ステージ・予想時給計算機 v18.5</title>
+  <title>最適ステージ・予想時給計算機 v18.6</title>
   <style>
     :root {
       font-family: system-ui, "Noto Sans JP", sans-serif;
@@ -112,6 +112,8 @@
     .image-import-controls { display: grid; grid-template-columns: minmax(170px,1fr) minmax(170px,1fr) auto; gap: 8px; align-items: end; }
     .image-import-controls label, .crop-control label { display: block; font-size: .82rem; font-weight: 650; margin-bottom: 4px; }
     .image-preview { display: block; width: 100%; max-height: 260px; margin-top: 12px; object-fit: contain; background: #111722; border-radius: 7px; }
+    .image-crop-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+    .image-crop-actions button { width: auto; }
     .crop-controls { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin-top: 10px; }
     .crop-control input { padding: 0; }
     .image-status { min-height: 1.5em; margin: 9px 0 0; color: #42566d; font-size: .86rem; }
@@ -201,7 +203,7 @@
   </nav>
 
   <section class="panel">
-    <h1>最適ステージ・予想時給計算機 <span class="version">v18.5</span></h1>
+    <h1>最適ステージ・予想時給計算機 <span class="version">v18.6</span></h1>
     <div class="muted">編成と現在の倍率を選ぶだけで、ステージ1～75のジェム・餌・総合効率を比較できます。</div>
   </section>
 
@@ -224,17 +226,18 @@
         </div>
         <button class="primary" id="partyImageAnalyze" type="button" disabled>画像を解析</button>
       </div>
-      <p class="image-recommend">切り取り画像推奨：7体の編成部分だけを切り取ると、名前・Lv・凸・変異を読み取りやすくなります。変異は高確信度のときだけ自動選択します。</p>
-      <p class="muted">バッグ全体の画像にも対応します。画像は外部へ送信せず、このブラウザ内で処理します。初回解析時だけ画像判定・OCRデータを読み込みます。</p>
+      <p class="image-recommend">バッグ全体から編成部分を自動で切り取ります。切り取り画像ならそのまま解析できます。変異は文字とカード背景を照合して、高確信度のときだけ自動選択します。</p>
+      <p class="muted">画像は外部へ送信せず、このブラウザ内で処理します。初回解析時だけ画像判定・OCRデータを読み込みます。</p>
       <div id="partyImageWorkspace" hidden>
         <canvas class="image-preview" id="partyImagePreview" aria-label="解析する編成部分のプレビュー"></canvas>
+        <div class="image-crop-actions"><button id="partyAutoCrop" type="button">編成部分を自動検出</button></div>
         <details>
           <summary>切り抜き範囲を調整</summary>
           <div class="crop-controls">
-            <div class="crop-control"><label for="partyCropX">左位置</label><input id="partyCropX" type="range" min="0" max="90" value="26"></div>
-            <div class="crop-control"><label for="partyCropY">上位置</label><input id="partyCropY" type="range" min="0" max="90" value="18"></div>
-            <div class="crop-control"><label for="partyCropW">横幅</label><input id="partyCropW" type="range" min="10" max="100" value="54"></div>
-            <div class="crop-control"><label for="partyCropH">高さ</label><input id="partyCropH" type="range" min="10" max="100" value="27"></div>
+            <div class="crop-control"><label for="partyCropX">左位置</label><input id="partyCropX" type="range" min="0" max="90" step="0.5" value="21.5"></div>
+            <div class="crop-control"><label for="partyCropY">上位置</label><input id="partyCropY" type="range" min="0" max="90" step="0.5" value="22"></div>
+            <div class="crop-control"><label for="partyCropW">横幅</label><input id="partyCropW" type="range" min="10" max="100" step="0.5" value="65.5"></div>
+            <div class="crop-control"><label for="partyCropH">高さ</label><input id="partyCropH" type="range" min="10" max="100" step="0.5" value="24"></div>
           </div>
         </details>
         <p class="image-status" id="partyImageStatus" role="status"></p>
@@ -374,8 +377,8 @@
   const HP = Array.from({ length: 75 }, (_, index) => enemyHpAtStage(index + 1));
   const UNITS = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
   const GEM_UNITS = [['QiD',48],['QD',45],['Td',42],['Dd',39],['Ud',36],['Dc',33],['No',30],['Oc',27],['Sp',24],['Sx',21],['Qi',18],['Qa',15],['T',12],['B',9],['M',6],['K',3]];
-  const STORAGE = 'stage-calculator-v18.5-20261126';
-  const OLD_STORAGES = ['stage-calculator-v18.4-20261126', 'stage-calculator-v18.3-20261126', 'stage-calculator-v18-20261125', 'stage-calculator-v17.8-20261124', 'stage-calculator-v17.7-20261124', 'stage-calculator-v17.6-20261123', 'stage-calculator-v17.5-20261123', 'stage-calculator-v17.4-20261122', 'stage-calculator-v17.3-20261122', 'stage-calculator-v17.2-20261121', 'stage-calculator-v17.1-20261121', 'stage-calculator-v17-20261121', 'stage-calculator-v16-20261121', 'stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
+  const STORAGE = 'stage-calculator-v18.6-20261126';
+  const OLD_STORAGES = ['stage-calculator-v18.5-20261126', 'stage-calculator-v18.4-20261126', 'stage-calculator-v18.3-20261126', 'stage-calculator-v18-20261125', 'stage-calculator-v17.8-20261124', 'stage-calculator-v17.7-20261124', 'stage-calculator-v17.6-20261123', 'stage-calculator-v17.5-20261123', 'stage-calculator-v17.4-20261122', 'stage-calculator-v17.3-20261122', 'stage-calculator-v17.2-20261121', 'stage-calculator-v17.1-20261121', 'stage-calculator-v17-20261121', 'stage-calculator-v16-20261121', 'stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
 
   const CHARACTERS = {
     none: { label: '特性なし', trait: 'none' },
@@ -1235,9 +1238,9 @@
     renderInputs(); save();
   });
   $('download').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify({ version: '18.5', ...state }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: '18.6', ...state }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob), a = document.createElement('a');
-    a.href = url; a.download = 'moncolle-calculator-v18.5-settings.json'; a.click();
+    a.href = url; a.download = 'moncolle-calculator-v18.6-settings.json'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('load').addEventListener('click', () => $('file').click());

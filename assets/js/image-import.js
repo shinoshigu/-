@@ -12,6 +12,7 @@
   const resultsBox = byId('partyImageResults');
   const resultRows = byId('partyImageResultRows');
   const applyButton = byId('partyImageApply');
+  const autoCropButton = byId('partyAutoCrop');
   const cropInputs = {
     x: byId('partyCropX'),
     y: byId('partyCropY'),
@@ -28,6 +29,8 @@
   let openCvUnavailable = false;
   let visionPromise = null;
   let recognized = [];
+  let cropWasAdjusted = false;
+  let autoCropRefined = false;
 
   const VISION_RUNTIME = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/';
   const VISION_CONFIG = './assets/model/character-classifier.json';
@@ -65,40 +68,72 @@
     cropInputs.height.value = String(values.height);
   }
 
+  function suggestedCropValues() {
+    if (effectiveMode() === 'party') return { x: 0, y: 0, width: 100, height: 100 };
+    const aspect = sourceImage ? sourceImage.naturalWidth / sourceImage.naturalHeight : 16 / 9;
+    return aspect >= 1.5
+      ? { x: 21.5, y: 22, width: 65.5, height: 24 }
+      : { x: 8, y: 20, width: 84, height: 26 };
+  }
+
   function resetCrop() {
-    setCropValues(effectiveMode() === 'party'
-      ? { x: 0, y: 0, width: 100, height: 100 }
-      : { x: 26, y: 18, width: 54, height: 27 });
+    setCropValues(suggestedCropValues());
+    cropWasAdjusted = false;
+    autoCropRefined = effectiveMode() === 'party';
     drawPreview();
   }
 
-  function cropRect() {
-    if (!sourceImage) return null;
-    const xPercent = Math.min(90, Math.max(0, Number(cropInputs.x.value) || 0));
-    const yPercent = Math.min(90, Math.max(0, Number(cropInputs.y.value) || 0));
-    const widthPercent = Math.min(100 - xPercent, Math.max(10, Number(cropInputs.width.value) || 10));
-    const heightPercent = Math.min(100 - yPercent, Math.max(10, Number(cropInputs.height.value) || 10));
-    return {
-      x: sourceImage.naturalWidth * xPercent / 100,
-      y: sourceImage.naturalHeight * yPercent / 100,
-      width: sourceImage.naturalWidth * widthPercent / 100,
-      height: sourceImage.naturalHeight * heightPercent / 100,
+  function normalizedCropValues(values = null) {
+    const source = values || {
+      x: cropInputs.x.value,
+      y: cropInputs.y.value,
+      width: cropInputs.width.value,
+      height: cropInputs.height.value,
     };
+    const x = Math.min(90, Math.max(0, Number(source.x) || 0));
+    const y = Math.min(90, Math.max(0, Number(source.y) || 0));
+    return {
+      x,
+      y,
+      width: Math.min(100 - x, Math.max(10, Number(source.width) || 10)),
+      height: Math.min(100 - y, Math.max(10, Number(source.height) || 10)),
+    };
+  }
+
+  function cropRect(values = null) {
+    if (!sourceImage) return null;
+    const normalized = normalizedCropValues(values);
+    return {
+      x: sourceImage.naturalWidth * normalized.x / 100,
+      y: sourceImage.naturalHeight * normalized.y / 100,
+      width: sourceImage.naturalWidth * normalized.width / 100,
+      height: sourceImage.naturalHeight * normalized.height / 100,
+    };
+  }
+
+  function drawCropToCanvas(canvas, rect, targetWidth) {
+    const scale = targetWidth / rect.width;
+    canvas.width = targetWidth;
+    canvas.height = Math.max(1, Math.round(rect.height * scale));
+    const context = canvas.getContext('2d', { alpha: false });
+    context.fillStyle = '#111722';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(sourceImage, rect.x, rect.y, rect.width, rect.height, 0, 0, canvas.width, canvas.height);
+  }
+
+  function makeCropCanvas(values, targetWidth = 840) {
+    const canvas = document.createElement('canvas');
+    drawCropToCanvas(canvas, cropRect(values), targetWidth);
+    return canvas;
   }
 
   function drawPreview() {
     const rect = cropRect();
     if (!rect) return;
     const targetWidth = Math.min(1600, Math.max(1000, Math.round(rect.width)));
-    const scale = targetWidth / rect.width;
-    preview.width = targetWidth;
-    preview.height = Math.max(1, Math.round(rect.height * scale));
-    const context = preview.getContext('2d', { alpha: false });
-    context.fillStyle = '#111722';
-    context.fillRect(0, 0, preview.width, preview.height);
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = 'high';
-    context.drawImage(sourceImage, rect.x, rect.y, rect.width, rect.height, 0, 0, preview.width, preview.height);
+    drawCropToCanvas(preview, rect, targetWidth);
   }
 
   function loadScript(src, isReady = () => true) {
@@ -221,6 +256,70 @@
     const exponentials = values.map(value => Math.exp(value - maximum));
     const total = exponentials.reduce((sum, value) => sum + value, 0) || 1;
     return exponentials.map(value => value / total);
+  }
+
+  async function scoreCropCandidates(candidates) {
+    const { session, config } = await getVisionModel();
+    const size = config.image_size;
+    const channelSize = size * size;
+    const batchSize = candidates.length * 7;
+    const tensorData = new Float32Array(batchSize * 3 * channelSize);
+    const mean = [0.485, 0.456, 0.406];
+    const deviation = [0.229, 0.224, 0.225];
+    const view = { left: 0.05, right: 0.95, top: 0.02, bottom: 0.94 };
+    let batchIndex = 0;
+    for (const candidate of candidates) {
+      const rowCanvas = makeCropCanvas(candidate, 840);
+      for (let slot = 0; slot < 7; slot += 1) {
+        const canvas = visualViewCanvas(rowCanvas, slot, view, size);
+        const pixels = canvas.getContext('2d', { willReadFrequently: true })
+          .getImageData(0, 0, size, size).data;
+        const base = batchIndex * 3 * channelSize;
+        for (let pixel = 0; pixel < channelSize; pixel += 1) {
+          const source = pixel * 4;
+          tensorData[base + pixel] = (pixels[source] / 255 - mean[0]) / deviation[0];
+          tensorData[base + channelSize + pixel] = (pixels[source + 1] / 255 - mean[1]) / deviation[1];
+          tensorData[base + channelSize * 2 + pixel] = (pixels[source + 2] / 255 - mean[2]) / deviation[2];
+        }
+        batchIndex += 1;
+      }
+    }
+    const input = new window.ort.Tensor('float32', tensorData, [batchSize, 3, size, size]);
+    const outputMap = await session.run({ image: input });
+    const output = outputMap.logits || Object.values(outputMap)[0];
+    const classCount = config.labels.length;
+    return candidates.map((candidate, candidateIndex) => {
+      let total = 0;
+      let strongSlots = 0;
+      for (let slot = 0; slot < 7; slot += 1) {
+        const rowIndex = candidateIndex * 7 + slot;
+        const start = rowIndex * classCount;
+        const probabilities = softmaxRow(Array.from(output.data.slice(start, start + classCount)))
+          .sort((left, right) => right - left);
+        const confidence = probabilities[0] || 0;
+        const margin = confidence - (probabilities[1] || 0);
+        total += confidence * 0.72 + Math.max(0, margin) * 0.28;
+        if (confidence >= 0.5 && margin >= 0.18) strongSlots += 1;
+      }
+      return { values: candidate, score: total / 7 + strongSlots * 0.025 };
+    }).sort((left, right) => right.score - left.score);
+  }
+
+  async function refineAutomaticCrop() {
+    if (!sourceImage || effectiveMode() === 'party') {
+      autoCropRefined = true;
+      return;
+    }
+    const base = normalizedCropValues(suggestedCropValues());
+    const candidates = [];
+    for (const yOffset of [-4.5, -3, -1.5, 0, 1.5, 3, 4.5]) {
+      candidates.push(normalizedCropValues({ ...base, y: base.y + yOffset }));
+    }
+    const [best] = await scoreCropCandidates(candidates);
+    if (best) setCropValues(best.values);
+    drawPreview();
+    cropWasAdjusted = false;
+    autoCropRefined = true;
   }
 
   async function analyzeVisualParty(rowCanvas) {
@@ -381,13 +480,25 @@
   }
 
   function makeNameCanvas(rowCanvas, index, variant = 'loose') {
-    const wideCrop = rowCanvas.width / rowCanvas.height >= 5.5;
+    const bottoms = effectiveMode() === 'party'
+      ? { strict: 0.24, loose: 0.3, adaptive: 0.34 }
+      : { strict: 0.18, loose: 0.22, adaptive: 0.26 };
     return makeTextCanvas(rowCanvas, index, {
       top: 0,
-      bottom: wideCrop ? 0.32 : 0.3,
-      left: 0.03,
-      right: 0.97,
+      bottom: bottoms[variant] || 0.22,
+      left: 0,
+      right: 1,
       variant,
+    });
+  }
+
+  function makeJkNameCanvas(rowCanvas, index) {
+    return makeTextCanvas(rowCanvas, index, {
+      top: 0,
+      bottom: effectiveMode() === 'party' ? 0.24 : 0.2,
+      left: 0.12,
+      right: 0.88,
+      variant: 'bright',
     });
   }
 
@@ -426,6 +537,7 @@
       .toUpperCase()
       .replace(/[０-９]/g, character => String.fromCharCode(character.charCodeAt(0) - 0xFEE0))
       .replace(/[―‐−]/g, 'ー')
+      .replace(/苑醒/g, '覚醒')
       .replace(/[^A-Z0-9ァ-ヶー一-龠々]/g, '');
   }
 
@@ -619,14 +731,12 @@
     return { hue, saturation: maximum ? difference / maximum : 0, value: maximum };
   }
 
-  function classifyNormalMutation(rowCanvas, index) {
+  function mutationBackgroundFeatures(rowCanvas, index) {
     const slotWidth = rowCanvas.width / 7;
     const startX = Math.round(slotWidth * index);
     const width = Math.max(1, Math.round(slotWidth));
     const context = rowCanvas.getContext('2d');
-    const cropBottom = rowCanvas.width / rowCanvas.height >= 5.5 ? 1 : 0.76;
-    const cropHeight = Math.max(1, Math.round(rowCanvas.height * cropBottom));
-    const image = context.getImageData(startX, 0, Math.min(width, rowCanvas.width - startX), cropHeight);
+    const image = context.getImageData(startX, 0, Math.min(width, rowCanvas.width - startX), rowCanvas.height);
     const hueBins = Array(12).fill(0);
     let samples = 0;
     let saturated = 0;
@@ -634,45 +744,111 @@
     let purple = 0;
     let bright = 0;
     let valueTotal = 0;
+    let saturationTotal = 0;
     const sampleWidth = image.width;
     const sampleHeight = image.height;
-    for (let y = Math.round(sampleHeight * 0.08); y < sampleHeight * 0.96; y += 4) {
-      for (let x = Math.round(sampleWidth * 0.08); x < sampleWidth * 0.92; x += 4) {
+    const step = Math.max(2, Math.round(Math.min(sampleWidth, sampleHeight) / 70));
+    for (let y = Math.round(sampleHeight * 0.13); y < sampleHeight * 0.76; y += step) {
+      for (let x = Math.round(sampleWidth * 0.1); x < sampleWidth * 0.9; x += step) {
+        const xRatio = x / sampleWidth;
+        const yRatio = y / sampleHeight;
+        const backgroundZone = xRatio <= 0.3 || xRatio >= 0.7 || yRatio <= 0.25;
+        if (!backgroundZone) continue;
         const offset = (y * sampleWidth + x) * 4;
         const hsv = rgbToHsv(image.data[offset], image.data[offset + 1], image.data[offset + 2]);
-        if (hsv.value < 0.14) continue;
+        if (hsv.value < 0.06) continue;
         samples += 1;
         valueTotal += hsv.value;
-        if (hsv.value > 0.72) bright += 1;
-        if (hsv.saturation > 0.42 && hsv.value > 0.28) {
+        saturationTotal += hsv.saturation;
+        if (hsv.value > 0.7) bright += 1;
+        if (hsv.saturation > 0.38 && hsv.value > 0.2) {
           saturated += 1;
           hueBins[Math.min(11, Math.floor(hsv.hue / 30))] += 1;
-          if (hsv.hue >= 42 && hsv.hue <= 78) yellow += 1;
-          if (hsv.hue >= 255 && hsv.hue <= 330) purple += 1;
+          if (hsv.hue >= 38 && hsv.hue <= 82) yellow += 1;
+          if (hsv.hue >= 245 && hsv.hue <= 335) purple += 1;
         }
       }
     }
-    if (!samples) return { mutation: 'normal', confidence: 0 };
+    if (!samples) return null;
     const saturatedRatio = saturated / samples;
     const brightRatio = bright / samples;
     const averageValue = valueTotal / samples;
-    const activeHueBins = hueBins.filter(count => count >= Math.max(4, saturated * 0.015)).length;
-    if (activeHueBins >= 7 && saturatedRatio >= 0.25) return { mutation: 'rainbow', confidence: 0.95 };
-    if (yellow / samples >= 0.28 && brightRatio >= 0.35) return { mutation: 'shiny', confidence: 0.95 };
-    if (brightRatio < 0.3 && (averageValue <= 0.48 || activeHueBins <= 4)) {
-      return { mutation: 'dark', confidence: 0.88 };
+    const averageSaturation = saturationTotal / samples;
+    const activeHueBins = hueBins.filter(count => count >= Math.max(3, saturated * 0.018)).length;
+    return {
+      samples,
+      saturatedRatio,
+      brightRatio,
+      averageValue,
+      averageSaturation,
+      activeHueBins,
+      yellowRatio: yellow / samples,
+      purpleRatio: purple / samples,
+    };
+  }
+
+  function classifyNormalMutation(rowCanvas, index) {
+    const features = mutationBackgroundFeatures(rowCanvas, index);
+    if (!features) return { mutation: 'normal', confidence: 0 };
+    if (features.activeHueBins >= 7 && features.saturatedRatio >= 0.28 && features.brightRatio >= 0.24) {
+      return { mutation: 'rainbow', confidence: 0.94 };
     }
-    const normalConfidence = saturatedRatio <= 0.16 && brightRatio >= 0.4 ? 0.9 : 0.62;
+    if (features.yellowRatio >= 0.26 && features.brightRatio >= 0.38 && features.activeHueBins <= 6) {
+      return { mutation: 'shiny', confidence: 0.92 };
+    }
+    if (features.brightRatio < 0.28 && features.averageValue <= 0.46) {
+      return { mutation: 'dark', confidence: 0.9 };
+    }
+    const normalConfidence = features.brightRatio >= 0.38 && features.averageSaturation <= 0.34 ? 0.88 : 0.68;
     return { mutation: 'normal', confidence: normalConfidence };
   }
 
-  function classifyCatalogMutation(entry, nameTexts, rowCanvas, index) {
+  function grayscaleCardScore(rowCanvas, index) {
+    const slotWidth = rowCanvas.width / 7;
+    const startX = Math.round(slotWidth * index);
+    const width = Math.max(1, Math.round(slotWidth));
+    const image = rowCanvas.getContext('2d').getImageData(
+      startX,
+      0,
+      Math.min(width, rowCanvas.width - startX),
+      rowCanvas.height,
+    );
+    const step = Math.max(2, Math.round(Math.min(image.width, image.height) / 70));
+    let samples = 0;
+    let grayscale = 0;
+    for (let y = Math.round(image.height * 0.2); y < image.height * 0.78; y += step) {
+      for (let x = Math.round(image.width * 0.28); x < image.width * 0.92; x += step) {
+        const offset = (y * image.width + x) * 4;
+        const hsv = rgbToHsv(image.data[offset], image.data[offset + 1], image.data[offset + 2]);
+        if (hsv.value < 0.06) continue;
+        samples += 1;
+        if (hsv.saturation <= 0.18) grayscale += 1;
+      }
+    }
+    return samples ? grayscale / samples : 0;
+  }
+
+  function classifyCatalogMutation(entry, nameTexts, rowCanvas, index, fallbackText = '') {
     if (!entry) return { mutation: 'normal', confidence: 0 };
     if (entry.category === 'normal') return classifyNormalMutation(rowCanvas, index);
     if (entry.category !== 'illusion') return { mutation: 'normal', confidence: 0 };
-    const text = normalizeText(nameTexts.filter(Boolean).join(' '));
-    if (text.includes('覚醒')) return { mutation: 'awakened', confidence: 0.98 };
-    if (text.includes('闇') || text.includes('漆黒')) return { mutation: 'dark', confidence: 0.98 };
+    const normalizedNames = nameTexts.filter(Boolean).map(normalizeText);
+    const awakenedVotes = normalizedNames.filter(text => text.includes('覚醒')).length;
+    const darkVotes = normalizedNames.filter(text => text.includes('闇') || text.includes('漆黒')).length;
+    if (awakenedVotes > darkVotes && awakenedVotes > 0) return { mutation: 'awakened', confidence: 0.99 };
+    if (darkVotes > awakenedVotes && darkVotes > 0) return { mutation: 'dark', confidence: 0.99 };
+    const fallback = normalizeText(fallbackText);
+    if (fallback.includes('覚醒') && !fallback.includes('漆黒')) return { mutation: 'awakened', confidence: 0.93 };
+    if ((fallback.includes('闇') || fallback.includes('漆黒')) && !fallback.includes('覚醒')) {
+      return { mutation: 'dark', confidence: 0.93 };
+    }
+    const background = classifyNormalMutation(rowCanvas, index);
+    if (background.mutation === 'rainbow' && background.confidence >= 0.9) {
+      return { mutation: 'awakened', confidence: 0.88 };
+    }
+    if (background.mutation === 'dark' && background.confidence >= 0.88) {
+      return { mutation: 'dark', confidence: 0.86 };
+    }
     const repeatedBaseName = nameTexts.filter(textPart => normalizeText(textPart).includes(normalizeText(entry.name))).length;
     return { mutation: 'normal', confidence: repeatedBaseName >= 2 ? 0.88 : 0.55 };
   }
@@ -685,6 +861,8 @@
       .replace(/[Ｖ]/g, 'V')
       .replace(/[|!ＩⅠI]/g, '1')
       .replace(/[OＯ]/g, '0');
+    const explicit = cleaned.match(/L\s*[VY]\s*[^0-9]{0,3}([0-9]{1,3})/);
+    if (explicit) return Math.min(150, Math.max(1, Number(explicit[1])));
     const direct = cleaned.match(/(?:L|1|I)?\s*[VY]\s*[^0-9]{0,3}([0-9]{1,3})/);
     return direct ? Math.min(150, Math.max(1, Number(direct[1]))) : null;
   }
@@ -769,9 +947,10 @@
     const limits = entry.category === 'legend' || entry.category === 'illusion'
       ? Array.from({ length: 11 }, (_, index) => index)
       : [0];
-    const mutations = entry.category === 'normal' && item.visualMutationConfidence >= 0.75
+    let mutations = entry.category === 'normal' && item.visualMutationConfidence >= 0.75
       ? mutationOptions(entry).filter(option => option.id === item.visualMutation)
       : mutationOptions(entry);
+    if (!mutations.length) mutations = mutationOptions(entry);
     for (const mutation of mutations) {
       for (const level of levels) {
         for (const limitBreak of limits) {
@@ -816,7 +995,9 @@
         return;
       }
       let candidates = item.candidateMatches.filter(candidate => candidate.score >= 0.26).slice(0, 10);
-      const lockedNormalEvidence = item.levelLocked && item.visualMutationConfidence >= 0.75;
+      const lockedNormalEvidence = item.levelLocked
+        && item.visualMutationConfidence >= 0.75
+        && ['normal', 'shiny', 'dark', 'rainbow'].includes(item.visualMutation);
       if (lockedNormalEvidence) {
         const candidateIds = new Set(candidates.map(candidate => candidate.entry.id));
         candidates = candidates.concat(api.catalog
@@ -878,6 +1059,28 @@
       item.mutation = 'normal';
       item.confidence = Math.max(item.confidence, 0.5);
       item.attackVerified = true;
+    });
+  }
+
+  function fillUnresolvedJkByImageAndAttack(items) {
+    const jk = api.catalog.find(entry => entry.id === 'jk');
+    if (!jk) return;
+    items.forEach(item => {
+      if (item.catalogId || !item.backgroundFeatures) return;
+      const grayscaleScore = Number(item.grayscaleScore) || 0;
+      const monochrome = item.backgroundFeatures.averageSaturation <= 0.36
+        && item.backgroundFeatures.saturatedRatio <= 0.34;
+      const expected = expectedAttack(jk, 'normal', item.level, item.limitBreak, false);
+      const relativeError = item.observedAttack
+        ? Math.abs(expected - item.observedAttack) / item.observedAttack
+        : 1;
+      const attackMatched = relativeError <= 0.012 && (monochrome || Number(item.level) === 1);
+      if (!attackMatched && grayscaleScore < 0.74) return;
+      item.catalogId = jk.id;
+      item.mutation = 'normal';
+      item.confidence = Math.max(item.confidence, 0.82);
+      item.attackVerified = true;
+      item.decisionSource = 'image-attack';
     });
   }
 
@@ -980,6 +1183,16 @@
     analyzeButton.disabled = true;
     resultsBox.hidden = true;
     try {
+      if (effectiveMode() === 'full' && !cropWasAdjusted && !autoCropRefined) {
+        setStatus('画像モデルで編成部分を自動検出しています…');
+        try {
+          await refineAutomaticCrop();
+        } catch (error) {
+          console.warn('自動切り取りの位置補正を省略します', error);
+          autoCropRefined = true;
+          drawPreview();
+        }
+      }
       let visualAvailable = true;
       const visualTask = analyzeVisualParty(preview).catch(error => {
         visualAvailable = false;
@@ -1011,9 +1224,22 @@
       for (const record of nameRecords) {
         const { index, nameTexts, decision } = record;
         const visualDecision = visualPredictions[index];
-        const fusedDecision = fuseCatalogDecision(decision, visualDecision);
         setStatus(`キャラ${index + 1}/7のLv・凸を読み取っています…`);
         const fullText = await recognizeText(worker, makeOcrCanvas(preview, index));
+        let expandedDecision = decision.accepted
+          ? decision
+          : decideCatalogFromNameReads([...nameTexts, fullText]);
+        if (!expandedDecision.accepted) {
+          const jkText = await recognizeText(worker, makeJkNameCanvas(preview, index), {
+            pageMode: '7',
+            whitelist: 'JKjk',
+          });
+          if (normalizeText(jkText).includes('JK')) {
+            const jk = api.catalog.find(entry => entry.id === 'jk');
+            if (jk) expandedDecision = { entry: jk, accepted: true, confidence: 0.96 };
+          }
+        }
+        const fusedDecision = fuseCatalogDecision(expandedDecision, visualDecision);
         // The full-card OCR also contains the attack number and easily turns
         // fragments such as "4.5M" into a false Lv4.  Only dedicated Lv crops
         // are allowed to lock the level.
@@ -1036,9 +1262,11 @@
             ? cardOnlyLevelText
             : [levelText, cardOnlyLevelText].filter(Boolean).join(' ');
         }
+        const explicitFullLevel = parseLevelDirect(fullText);
+        if (explicitFullLevel) levelText = `Lv${explicitFullLevel}`;
 
         let limitText = '';
-        const preliminaryEntry = fusedDecision.entry || decision.entry || visualDecision?.entry;
+        const preliminaryEntry = fusedDecision.entry || expandedDecision.entry || visualDecision?.entry;
         const needsLimitRead = preliminaryEntry && preliminaryEntry.category !== 'normal';
         if (needsLimitRead) {
           limitText = parseLimitBreak(fullText) > 0
@@ -1050,10 +1278,10 @@
           }
         }
 
-        const item = inferResult(nameTexts, levelText, limitText, fullText, preview, index);
+        const item = inferResult([...nameTexts, fullText], levelText, limitText, fullText, preview, index);
         item.catalogId = fusedDecision.accepted ? fusedDecision.entry.id : '';
         item.confidence = fusedDecision.confidence;
-        item.ocrConfidence = decision.confidence;
+        item.ocrConfidence = expandedDecision.confidence;
         item.visualAvailable = visualAvailable && Boolean(visualDecision);
         item.visualConfidence = visualDecision?.confidence || 0;
         item.visualMargin = visualDecision?.margin || 0;
@@ -1062,11 +1290,19 @@
         item.decisionSource = fusedDecision.source;
         item.decisionConflict = fusedDecision.conflict;
         const mutationEntry = fusedDecision.entry || preliminaryEntry;
-        const mutationDecision = classifyCatalogMutation(mutationEntry, [...nameTexts, fullText], preview, index);
+        const mutationDecision = classifyCatalogMutation(
+          mutationEntry,
+          nameTexts,
+          preview,
+          index,
+          [fullText, limitText].filter(Boolean).join(' '),
+        );
         item.visualMutation = mutationDecision.mutation;
         item.visualMutationConfidence = mutationDecision.confidence;
         item.mutationConfidence = mutationDecision.confidence;
         item.mutation = mutationDecision.confidence >= 0.82 ? mutationDecision.mutation : 'normal';
+        item.backgroundFeatures = mutationBackgroundFeatures(preview, index);
+        item.grayscaleScore = grayscaleCardScore(preview, index);
         item.limitBreak = preliminaryEntry?.category === 'legend' || preliminaryEntry?.category === 'illusion'
           ? parseLimitBreak(nameTexts.join(' '), fullText, limitText)
           : 0;
@@ -1074,6 +1310,7 @@
         recognized.push(item);
       }
       reconcileWithAttack(recognized);
+      fillUnresolvedJkByImageAndAttack(recognized);
       fillUnresolvedNormalByNumbers(recognized);
       renderResults();
       setStatus('解析しました。画像・文字・攻撃力を照合しています。キャラ名・Lv・凸・変異を確認してから反映してください。');
@@ -1094,7 +1331,9 @@
       resultsBox.hidden = true;
       analyzeButton.disabled = false;
       resetCrop();
-      setStatus(`${effectiveMode() === 'party' ? '編成部分' : 'バッグ全体'}として判定しました。プレビューに7体が入っているか確認してください。`);
+      setStatus(effectiveMode() === 'party'
+        ? '編成部分として判定しました。このまま解析できます。'
+        : 'バッグ全体として判定しました。解析時に編成部分の位置を自動補正します。');
     } catch (error) {
       sourceImage = null;
       analyzeButton.disabled = true;
@@ -1113,8 +1352,37 @@
     input.addEventListener('input', () => {
       if (!sourceImage) return;
       resultsBox.hidden = true;
+      cropWasAdjusted = true;
+      autoCropRefined = false;
       drawPreview();
     });
+  });
+
+  autoCropButton?.addEventListener('click', async () => {
+    if (!sourceImage) return;
+    resultsBox.hidden = true;
+    cropWasAdjusted = false;
+    autoCropRefined = false;
+    if (effectiveMode() === 'party') {
+      resetCrop();
+      setStatus('編成部分のみの画像なので、画像全体を使用します。');
+      return;
+    }
+    autoCropButton.disabled = true;
+    analyzeButton.disabled = true;
+    setStatus('画像モデルで編成部分を自動検出しています…');
+    try {
+      await refineAutomaticCrop();
+      setStatus('編成部分を自動で切り取りました。プレビューを確認して解析してください。');
+    } catch (error) {
+      console.error(error);
+      setCropValues(suggestedCropValues());
+      drawPreview();
+      setStatus('位置補正を完了できなかったため、標準位置で切り取りました。必要なら範囲を調整してください。');
+    } finally {
+      autoCropButton.disabled = false;
+      analyzeButton.disabled = false;
+    }
   });
 
   analyzeButton.addEventListener('click', analyzeImage);
