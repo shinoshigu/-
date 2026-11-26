@@ -129,31 +129,31 @@
     return ocrWorker;
   }
 
-  function makeOcrCanvas(rowCanvas, index) {
+  function makeTextCanvas(rowCanvas, index, topRatio = 0, bottomRatio = 1) {
     const slotWidth = rowCanvas.width / 7;
     const sourceX = Math.round(slotWidth * index);
     const sourceWidth = Math.max(1, Math.round(slotWidth));
-    const bands = [
-      { y: 0, height: Math.round(rowCanvas.height * 0.34) },
-      { y: Math.round(rowCanvas.height * 0.40), height: Math.round(rowCanvas.height * 0.43) },
-    ];
+    const sourceY = Math.max(0, Math.round(rowCanvas.height * topRatio));
+    const sourceHeight = Math.max(1, Math.round(rowCanvas.height * (bottomRatio - topRatio)));
     const scale = Math.min(4, Math.max(2, 360 / sourceWidth));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-    canvas.height = Math.max(1, Math.round(bands.reduce((sum, band) => sum + band.height, 0) * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
     const context = canvas.getContext('2d', { alpha: false });
     context.fillStyle = '#fff';
     context.fillRect(0, 0, canvas.width, canvas.height);
-    let outputY = 0;
-    for (const band of bands) {
-      const outputHeight = Math.round(band.height * scale);
-      context.drawImage(rowCanvas, sourceX, band.y, sourceWidth, band.height, 0, outputY, canvas.width, outputHeight);
-      outputY += outputHeight;
-    }
+    context.drawImage(rowCanvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
     const image = context.getImageData(0, 0, canvas.width, canvas.height);
     for (let offset = 0; offset < image.data.length; offset += 4) {
-      const luminance = image.data[offset] * 0.299 + image.data[offset + 1] * 0.587 + image.data[offset + 2] * 0.114;
-      const value = luminance >= 164 ? 0 : 255;
+      const red = image.data[offset];
+      const green = image.data[offset + 1];
+      const blue = image.data[offset + 2];
+      const maximum = Math.max(red, green, blue);
+      const minimum = Math.min(red, green, blue);
+      const saturation = maximum ? (maximum - minimum) / maximum : 0;
+      const luminance = red * 0.299 + green * 0.587 + blue * 0.114;
+      const isWhiteText = luminance >= 150 && saturation <= 0.34;
+      const value = isWhiteText ? 0 : 255;
       image.data[offset] = value;
       image.data[offset + 1] = value;
       image.data[offset + 2] = value;
@@ -161,6 +161,14 @@
     }
     context.putImageData(image, 0, 0);
     return canvas;
+  }
+
+  function makeOcrCanvas(rowCanvas, index) {
+    return makeTextCanvas(rowCanvas, index, 0, 1);
+  }
+
+  function makeLevelCanvas(rowCanvas, index) {
+    return makeTextCanvas(rowCanvas, index, 0.38, 0.88);
   }
 
   function normalizeText(value) {
@@ -218,17 +226,29 @@
   }
 
   function findBestCatalog(text) {
-    const source = normalizeText(text)
-      .replace(/LV[0-9]{1,3}/g, '')
-      .replace(/[0-9]{1,3}凸/g, '');
+    const sources = String(text || '')
+      .split(/[\r\n|]+/)
+      .map(line => normalizeText(line)
+        .replace(/[LI1][VY][0-9]{1,3}/g, '')
+        .replace(/[0-9]{1,3}凸/g, '')
+        .replace(/[0-9]+/g, ''))
+      .filter(Boolean);
+    if (!sources.length) sources.push(normalizeText(text).replace(/[0-9]+/g, ''));
     let best = { entry: null, mutation: 'normal', score: 0 };
     for (const entry of api.catalog) {
       for (const alias of catalogAliases(entry)) {
-        const score = similarityWithin(source, normalizeText(alias.text));
-        if (score > best.score) best = { entry, mutation: alias.mutation, score };
+        const needle = normalizeText(alias.text);
+        for (const source of sources) {
+          const fullScore = 1 - levenshtein(source, needle) / Math.max(source.length, needle.length);
+          const partialCap = needle.length <= 3 ? 0.55 : needle.length <= 4 ? 0.68 : 0.84;
+          const partialScore = similarityWithin(source, needle) * partialCap;
+          const exactScore = source === needle ? 1 : source.includes(needle) ? (needle.length <= 3 ? 0.7 : 0.96) : 0;
+          const score = Math.max(fullScore, partialScore, exactScore);
+          if (score > best.score) best = { entry, mutation: alias.mutation, score };
+        }
       }
     }
-    return best.score >= 0.34 ? best : { entry: null, mutation: 'normal', score: best.score };
+    return best.score >= 0.38 ? best : { entry: null, mutation: 'normal', score: best.score };
   }
 
   function rgbToHsv(red, green, blue) {
@@ -290,10 +310,16 @@
     return 'normal';
   }
 
-  function parseLevel(text) {
+  function parseLevelDirect(text) {
     const cleaned = normalizeText(text).replace(/[OＯ]/g, '0');
-    const direct = cleaned.match(/L[VY][^0-9]{0,3}([0-9]{1,3})/);
-    if (direct) return Math.min(150, Math.max(1, Number(direct[1])));
+    const direct = cleaned.match(/[LI1][VY][^0-9]{0,3}([0-9]{1,3})/);
+    return direct ? Math.min(150, Math.max(1, Number(direct[1]))) : null;
+  }
+
+  function parseLevel(text, levelText = '') {
+    const direct = parseLevelDirect(text) || parseLevelDirect(levelText);
+    if (direct) return direct;
+    const cleaned = normalizeText(levelText || text).replace(/[OＯ]/g, '0');
     const candidates = [...cleaned.matchAll(/[0-9]{1,3}/g)]
       .map(match => Number(match[0]))
       .filter(value => value >= 1 && value <= 150);
@@ -306,17 +332,17 @@
     return match ? Math.min(10, Math.max(0, Number(match[1]))) : 0;
   }
 
-  function inferResult(text, rowCanvas, index) {
+  function inferResult(text, levelText, rowCanvas, index) {
     const match = findBestCatalog(text);
     let mutation = match.mutation;
     if (match.entry?.category === 'normal') mutation = classifyNormalMutation(rowCanvas, index);
     return {
       catalogId: match.entry?.id || '',
       mutation,
-      level: parseLevel(text),
+      level: parseLevel(text, levelText),
       limitBreak: parseLimitBreak(text),
       confidence: match.score,
-      rawText: String(text || '').replace(/\s+/g, ' ').trim(),
+      rawText: [text, levelText].filter(Boolean).join(' / ').replace(/\s+/g, ' ').trim(),
     };
   }
 
@@ -414,7 +440,12 @@
         setStatus(`キャラ${index + 1}/7を読み取っています…`);
         const canvas = makeOcrCanvas(preview, index);
         const result = await worker.recognize(canvas);
-        recognized.push(inferResult(result.data.text, preview, index));
+        let levelText = '';
+        if (!parseLevelDirect(result.data.text)) {
+          const levelResult = await worker.recognize(makeLevelCanvas(preview, index));
+          levelText = levelResult.data.text;
+        }
+        recognized.push(inferResult(result.data.text, levelText, preview, index));
       }
       renderResults();
       setStatus('解析しました。候補・Lv・凸・変異を確認してから反映してください。');
