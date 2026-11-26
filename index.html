@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>最適ステージ・予想時給計算機 v18</title>
+  <title>最適ステージ・予想時給計算機 v18.2</title>
   <style>
     :root {
       font-family: system-ui, "Noto Sans JP", sans-serif;
@@ -100,6 +100,15 @@
       background: #f8fbff;
     }
     .image-import-box h3 { margin: 0 0 10px; font-size: 1rem; }
+    .image-recommend {
+      display: inline-block;
+      margin: 10px 0 0;
+      padding: 6px 10px;
+      color: #1557a2;
+      background: #eaf3ff;
+      border-radius: 999px;
+      font-size: .82rem;
+    }
     .image-import-controls { display: grid; grid-template-columns: minmax(170px,1fr) minmax(170px,1fr) auto; gap: 8px; align-items: end; }
     .image-import-controls label, .crop-control label { display: block; font-size: .82rem; font-weight: 650; margin-bottom: 4px; }
     .image-preview { display: block; width: 100%; max-height: 260px; margin-top: 12px; object-fit: contain; background: #111722; border-radius: 7px; }
@@ -192,7 +201,7 @@
   </nav>
 
   <section class="panel">
-    <h1>最適ステージ・予想時給計算機 <span class="version">v18</span></h1>
+    <h1>最適ステージ・予想時給計算機 <span class="version">v18.2</span></h1>
     <div class="muted">編成と現在の倍率を選ぶだけで、ステージ1～75のジェム・餌・総合効率を比較できます。</div>
   </section>
 
@@ -215,7 +224,8 @@
         </div>
         <button class="primary" id="partyImageAnalyze" type="button" disabled>画像を解析</button>
       </div>
-      <p class="muted">バッグ全体と編成部分だけの画像に対応します。画像は外部へ送信せず、このブラウザ内で処理します。初回解析時だけOCRデータを読み込みます。</p>
+      <p class="image-recommend">切り取り画像推奨：7体の編成部分だけを切り取ると、名前・Lv・凸・変異を読み取りやすくなります。</p>
+      <p class="muted">バッグ全体の画像にも対応します。画像は外部へ送信せず、このブラウザ内で処理します。初回解析時だけOCRデータを読み込みます。</p>
       <div id="partyImageWorkspace" hidden>
         <canvas class="image-preview" id="partyImagePreview" aria-label="解析する編成部分のプレビュー"></canvas>
         <details>
@@ -1246,10 +1256,12 @@
       name: entry.name,
       label: catalogLabel(entry),
       category: entry.category,
+      attack: entry.attack,
+      character: entry.character,
     })),
     mutations: Object.fromEntries(Object.entries(MUTATIONS).map(([category, values]) => [
       category,
-      Object.entries(values).map(([id, [label]]) => ({ id, label })),
+      Object.entries(values).map(([id, [label, multiplier]]) => ({ id, label, multiplier })),
     ])),
     applyImportedParty(items) {
       if (!Array.isArray(items)) return;
