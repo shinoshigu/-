@@ -536,11 +536,11 @@
 
   function makeAttackCanvas(rowCanvas, index) {
     return makeTextCanvas(rowCanvas, index, {
-      top: 0.86,
+      top: 0.81,
       bottom: 1,
-      left: 0.03,
-      right: 0.97,
-      variant: 'bright',
+      left: 0.06,
+      right: 1,
+      variant: 'strict',
     });
   }
 
@@ -840,7 +840,7 @@
     return samples ? grayscale / samples : 0;
   }
 
-  function classifyCatalogMutation(entry, nameTexts, rowCanvas, index, fallbackText = '') {
+  function classifyCatalogMutation(entry, nameTexts, rowCanvas, index, fallbackText = '', background = null) {
     if (!entry) return { mutation: 'normal', confidence: 0 };
     if (entry.category === 'normal') return classifyNormalMutation(rowCanvas, index);
     if (entry.category !== 'illusion') return { mutation: 'normal', confidence: 0 };
@@ -854,7 +854,9 @@
     if ((fallback.includes('闇') || fallback.includes('漆黒')) && !fallback.includes('覚醒')) {
       return { mutation: 'dark', confidence: 0.93 };
     }
-    const background = classifyNormalMutation(rowCanvas, index);
+    const bare = normalizedNames.filter(text => text === normalizeText(entry.name)).length;
+    if (bare >= 2) return {mutation:'normal', confidence:0.84};
+    background ||= classifyNormalMutation(rowCanvas, index);
     if (background.mutation === 'rainbow' && background.confidence >= 0.9) {
       return { mutation: 'awakened', confidence: 0.88 };
     }
@@ -872,11 +874,6 @@
     return value >= 1 && value <= 150 ? value : null;
   }
 
-  function parseLevel(text, levelText = '') {
-    const direct = parseLevelDirect(levelText) || parseLevelDirect(text);
-    if (direct) return direct;
-    return 1;
-  }
 
   function parseDedicatedLevel(text) {
     const direct = parseLevelDirect(text);
@@ -909,219 +906,37 @@
     return numericHint;
   }
 
-  function parseLimitBreak(...texts) {
-    const cleaned = normalizeText(texts.filter(Boolean).join(' ')).replace(/[OＯ]/g, '0');
-    const match = cleaned.match(/([0-9]{1,2})凸/);
-    return match ? Math.min(10, Math.max(0, Number(match[1]))) : 0;
+  function limitObservation(text, allowBare = false) {
+    const normalized = String(text || '').normalize('NFKC').toUpperCase().replace(/O/g, '0');
+    const match = normalized.match(/(?<![\d])([0-9]{1,2})\s*凸/) || (allowBare && normalized.trim().match(/^(\d{1,2})$/));
+    if (!match || Number(match[1]) > 10) return null;
+    return {value:Number(match[1]), quality:match[0].includes('凸') ? 0.96 : 0.50};
   }
 
-  function parseDedicatedLimit(text) {
-    const cleaned = normalizeText(text).replace(/[OＯ]/g, '0').replace(/[IＩ|!]/g, '1');
-    const explicit = cleaned.match(/([0-9]{1,2})凸/);
-    if (explicit) return { value: Math.min(10, Math.max(0, Number(explicit[1]))), locked: true };
-    const numericOnly = cleaned.match(/^([0-9]{1,2})$/);
-    const value = numericOnly ? Number(numericOnly[1]) : null;
-    return value >= 1 && value <= 10
-      ? { value, locked: true }
-      : { value: 0, locked: false };
+  async function collectLimit(worker, index, fullText, preliminary) {
+    const fromCard = limitObservation(fullText);
+    if (fromCard || preliminary?.category === 'normal') return fromCard;
+    const options = {pageMode:'7', whitelist:'0123456789凸'};
+    const first = limitObservation(await recognizeText(worker, makeLimitCanvas(preview, index), options), true);
+    if (!first || first.quality > 0.9) return first;
+    const other = limitObservation(await recognizeText(worker, makeLimitCanvas(preview, index, 'adaptive'), options), true);
+    if (other?.quality > 0.9) return other;
+    return first.value === other?.value ? {...first, quality:0.71} : null;
   }
 
-  function parseAttack(...texts) {
-    const source = texts.filter(Boolean).join(' ').toUpperCase().replace(/,/g, '.');
-    const matches = [...source.matchAll(/([0-9]{1,4}(?:\.[0-9]+)?)\s*([KMBT])/g)];
-    const match = matches.at(-1);
-    if (!match) return null;
-    const units = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
-    return Number(match[1]) * units[match[2]];
-  }
-
-  function inferResult(nameTexts, levelText, limitText, attackText, rowCanvas, index) {
-    const matches = mergeCatalogMatches(nameTexts);
-    const best = matches[0] || { entry: null, mutation: 'normal', score: 0 };
-    const match = best.score >= 0.38 ? best : { entry: null, mutation: 'normal', score: best.score };
-    const mutation = 'normal';
-    const allNameText = nameTexts.filter(Boolean).join(' / ');
-    const dedicatedLevel = parseDedicatedLevel(levelText);
-    const dedicatedLimit = parseDedicatedLimit(limitText);
-    const limitBreak = match.entry?.category === 'normal'
-      ? 0
-      : (parseLimitBreak(allNameText, limitText) || dedicatedLimit.value);
-    return {
-      catalogId: match.entry?.id || '',
-      mutation,
-      level: dedicatedLevel.level || parseLevel(allNameText, levelText),
-      limitBreak,
-      confidence: match.score,
-      rawText: [allNameText, levelText, limitText, attackText].filter(Boolean).join(' / ').replace(/\s+/g, ' ').trim(),
-      observedAttack: parseAttack(allNameText, attackText),
-      candidateMatches: matches.slice(0, 10),
-      attackVerified: false,
-      levelLocked: dedicatedLevel.locked,
-      levelEvidence: dedicatedLevel.source,
-      limitLocked: match.entry?.category !== 'normal'
-        && (dedicatedLimit.locked || parseLimitBreak(allNameText, limitText) > 0),
-      visualMutation: 'normal',
-      visualMutationConfidence: 0,
-    };
-  }
-
-  function mutationOptions(entry) {
-    return api.mutations[entry.category] || [{ id: 'normal', label: '—', multiplier: 1 }];
-  }
-
-  const expectedAttack = api.attackAtLevel;
-
-  function bestAttackFit(entry, item, observedAttack, paired) {
-    let best = null;
-    const levels = item.levelLocked ? [item.level] : Array.from({length:150}, (_, i) => i+1);
-    const limits = entry.category === 'legend' || entry.category === 'illusion'
-      ? (item.limitLocked
-        ? [Math.min(10, Math.max(0, Math.round(Number(item.limitBreak) || 0)))]
-        : Array.from({ length: 11 }, (_, index) => index))
-      : [0];
-    let mutations = item.visualMutationConfidence >= 0.82
-      ? mutationOptions(entry).filter(option => option.id === item.visualMutation)
-      : mutationOptions(entry);
-    if (!mutations.length) mutations = mutationOptions(entry);
-    const displayStep = 10 ** (3*Math.floor(Math.log10(observedAttack)/3)-1);
-    for (const mutation of mutations) {
-      for (const level of levels) {
-        for (const limitBreak of limits) {
-          const expected = expectedAttack(entry, mutation.id, level, limitBreak, paired);
-          // The game truncates to tenths of K/M/etc and hides a trailing .0.
-          // E.g. 6.9M represents the interval [6.9M,7.0M).
-          const relativeError = Math.max(0, observedAttack-expected, expected-observedAttack-displayStep) / observedAttack;
-          const levelPenalty = item.levelEvidence === 'explicit' ? 0.0003 : 0.00008;
-          const preferencePenalty = Math.abs(level - item.level) * levelPenalty
-            + (mutation.id === item.mutation ? 0 : 0.012)
-            + Math.abs(limitBreak - item.limitBreak) * (item.limitLocked ? 0.006 : 0.0015);
-          const score = relativeError + preferencePenalty;
-          if (!best || score < best.score) {
-            best = { mutation: mutation.id, level, limitBreak, relativeError, score };
-          }
-        }
-      }
+  function observationsForMutation(nameTexts, fullText, index) {
+    const decisions = {};
+    const background = classifyNormalMutation(preview, index);
+    decisions.normal = {value:background.mutation, quality:background.confidence};
+    for (const entry of api.catalog.filter(c => c.category === 'illusion')) {
+      const result = classifyCatalogMutation(entry, nameTexts, preview, index, fullText, background);
+      decisions[entry.id] = {value:result.mutation, quality:result.confidence};
     }
-    return best;
-  }
-
-  function reconcileWithAttack(items) {
-    const mikons = items.filter(i => i.catalogId === 'mikon');
-    const ponjas = items.filter(i => i.catalogId === 'ponja');
-    const pairCount = Math.min(mikons.length, ponjas.length);
-    const pairs = new Set([...mikons.slice(0,pairCount), ...ponjas.slice(0,pairCount)]);
-
-    items.forEach(item => {
-      if (!item.observedAttack) return;
-      if (item.characterLocked && item.catalogId) {
-        const entry = api.catalog.find(candidate => candidate.id === item.catalogId);
-        if (!entry) return;
-        const paired = pairs.has(item);
-        const fit = bestAttackFit(entry, item, item.observedAttack, paired);
-        if (fit && fit.relativeError <= 0.035) {
-          // The selected character and the card background remove most of the
-          // numerical ambiguity. Prefer the Lv/limit combination that actually
-          // reproduces the displayed attack over a truncated OCR result.
-          item.attackVerified = true;
-          if (!item.levelLocked) item.levelEvidence = 'estimate';
-          item.level = fit.level;
-          item.limitBreak = fit.limitBreak;
-          if (item.visualMutationConfidence < 0.82) item.mutation = fit.mutation;
-        }
-        return;
-      }
-      let candidates = item.candidateMatches.filter(candidate => candidate.score >= 0.26).slice(0, 10);
-      const lockedNormalEvidence = item.levelLocked
-        && item.visualMutationConfidence >= 0.75
-        && ['normal', 'shiny', 'dark', 'rainbow'].includes(item.visualMutation);
-      if (lockedNormalEvidence) {
-        const candidateIds = new Set(candidates.map(candidate => candidate.entry.id));
-        candidates = candidates.concat(api.catalog
-          .filter(entry => entry.category === 'normal' && !candidateIds.has(entry.id))
-          .map(entry => ({ entry, mutation: item.visualMutation, score: 0 })));
-      }
-      let best = null;
-      const evaluations = [];
-      for (const candidate of candidates) {
-        const paired = pairs.has(item);
-        const fit = bestAttackFit(candidate.entry, item, item.observedAttack, paired);
-        const attackScore = Math.max(0, 1 - fit.relativeError / 0.12);
-        const combinedScore = candidate.score * 0.55 + attackScore * 0.45;
-        const evaluation = { candidate, fit, combinedScore };
-        evaluations.push(evaluation);
-        if (!best || combinedScore > best.combinedScore) best = evaluation;
-      }
-      if (!best || best.fit.relativeError > 0.08) return;
-      if (!item.catalogId && best.candidate.score < 0.28) {
-        const attackOrder = evaluations.slice().sort((left, right) => left.fit.relativeError - right.fit.relativeError);
-        const nextError = attackOrder.find(evaluation => evaluation.candidate.entry.id !== best.candidate.entry.id)?.fit.relativeError ?? 1;
-        const uniqueAttackMatch = lockedNormalEvidence
-          && best.fit.relativeError <= 0.02
-          && nextError - best.fit.relativeError >= 0.04;
-        if (!uniqueAttackMatch) return;
-      }
-      item.catalogId = best.candidate.entry.id;
-      if (!item.levelLocked) item.levelEvidence = 'estimate';
-      item.mutation = best.fit.mutation;
-      item.level = best.fit.level;
-      item.limitBreak = best.fit.limitBreak;
-      item.confidence = Math.max(item.confidence, best.candidate.score);
-      item.attackVerified = true;
-      item.decisionSource = item.decisionSource === 'hold' ? 'attack' : item.decisionSource;
-    });
-  }
-
-  function fillUnresolvedNormalByNumbers(items) {
-    const normalMutations = api.mutations.normal || [{ id: 'normal', multiplier: 1 }];
-    items.forEach(item => {
-      if (item.catalogId || !item.levelLocked || !item.observedAttack) return;
-      const matches = [];
-      api.catalog.filter(entry => entry.category === 'normal').forEach(entry => {
-        normalMutations.forEach(mutation => {
-          const expected = expectedAttack(entry, mutation.id, item.level, 0, false);
-          matches.push({
-            entry,
-            relativeError: Math.abs(expected - item.observedAttack) / item.observedAttack,
-          });
-        });
-      });
-      matches.sort((left, right) => left.relativeError - right.relativeError);
-      const best = matches[0];
-      const next = matches.find(match => match.entry.id !== best.entry.id);
-      const unique = best.relativeError <= 0.02
-        && (next?.relativeError ?? 1) - best.relativeError >= 0.02;
-      if (!unique) return;
-      item.catalogId = best.entry.id;
-      item.mutation = 'normal';
-      item.confidence = Math.max(item.confidence, 0.5);
-      item.attackVerified = true;
-    });
-  }
-
-  function fillUnresolvedJkByImageAndAttack(items) {
-    const jk = api.catalog.find(entry => entry.id === 'jk');
-    if (!jk) return;
-    items.forEach(item => {
-      if (item.catalogId || !item.backgroundFeatures) return;
-      const grayscaleScore = Number(item.grayscaleScore) || 0;
-      const monochrome = item.backgroundFeatures.averageSaturation <= 0.36
-        && item.backgroundFeatures.saturatedRatio <= 0.34;
-      const expected = expectedAttack(jk, 'normal', item.level, item.limitBreak, false);
-      const relativeError = item.observedAttack
-        ? Math.abs(expected - item.observedAttack) / item.observedAttack
-        : 1;
-      const attackMatched = relativeError <= 0.012 && (monochrome || Number(item.level) === 1);
-      if (!attackMatched && grayscaleScore < 0.74) return;
-      item.catalogId = jk.id;
-      item.mutation = 'normal';
-      item.confidence = Math.max(item.confidence, 0.82);
-      item.attackVerified = true;
-      item.decisionSource = 'image-attack';
-    });
+    return decisions;
   }
 
   function addCatalogOptions(select) {
-    select.add(new Option('候補なし・手動で選択', ''));
+    select.add(new Option('要確認・キャラを選択', ''));
     for (const category of ['normal', 'legend', 'illusion']) {
       const group = document.createElement('optgroup');
       group.label = CATEGORY_LABELS[category];
@@ -1134,12 +949,42 @@
 
   function setMutationOptions(select, item) {
     const entry = api.catalog.find(candidate => candidate.id === item.catalogId);
-    const options = api.mutations[entry?.category] || [{ id: 'normal', label: '—' }];
+    const options = api.mutations[entry?.category] || [{id:'normal', label:'—'}];
     select.replaceChildren();
+    if (options.length > 1) select.add(new Option('変異を確認', ''));
     for (const option of options) select.add(new Option(option.label, option.id));
-    select.value = options.some(option => option.id === item.mutation) ? item.mutation : options[0].id;
+    select.value = options.length === 1 ? options[0].id : item.mutation;
     item.mutation = select.value;
     select.disabled = options.length === 1;
+  }
+
+  function validInteger(value, min, max) {
+    return value !== '' && value != null && Number.isInteger(Number(value)) && Number(value) >= min && Number(value) <= max;
+  }
+
+  function readyToApply(item) {
+    return Boolean(item.catalogId && item.mutation && validInteger(item.level, 1, 150) && validInteger(item.limitBreak, 0, 10));
+  }
+
+  function updateApplyButton() {
+    const count = recognized.filter(readyToApply).length;
+    applyButton.disabled = count === 0;
+    applyButton.textContent = count ? `選択済みの${count}体を編成に反映` : '反映するキャラを確認してください';
+  }
+
+  function reconcileParty() {
+    const observations = recognized.map(item => item.manualId
+      ? {...item.observation, manualId:item.manualId, identity:item.manualId} : item.observation);
+    const verdicts = window.moncolleConsensus.resolveParty(api, observations);
+    recognized.forEach((item, i) => {
+      if (item.edited) return;
+      const verdict = verdicts[i];
+      item.verdict = verdict;
+      item.catalogId = verdict.id;
+      item.level = verdict.values.level ?? '';
+      item.limitBreak = verdict.id ? verdict.values.limit ?? '' : item.observation.limit?.value ?? '';
+      item.mutation = verdict.id ? verdict.values.mutation ?? '' : '';
+    });
   }
 
   function renderResults() {
@@ -1182,36 +1027,54 @@
 
       const raw = document.createElement('div');
       raw.className = 'raw';
-      const evidence = [
-        {glyph:'Lvを画像で確認', explicit:'Lvを文字で確認', estimate:'Lvは攻撃力から推定・要確認'}[item.levelEvidence] || 'Lv要確認',
-        `OCR ${Math.round((item.ocrConfidence || 0) * 100)}%`,
-        item.visualAvailable ? `画像 ${Math.round((item.visualConfidence || 0) * 100)}%` : '',
-        item.mutationConfidence >= 0.82 ? `変異 ${Math.round(item.mutationConfidence * 100)}%` : '',
-        item.attackVerified ? '表示攻撃力と照合済み' : '',
-        item.decisionSource === 'hold' ? '判定保留' : '',
-      ].filter(Boolean).join('｜');
-      const visualCandidates = (item.visualCandidates || [])
-        .slice(0, 3)
-        .map(candidate => candidate.entry.name)
-        .join('・');
-      raw.textContent = `${evidence}${visualCandidates ? `｜画像候補：${visualCandidates}` : ''}｜読取：${item.rawText || '文字を読み取れませんでした'}`;
-
+      const {verdict, observation} = item;
+      const summary = verdict.evidence.length ? '照合項目 ' + verdict.evidence.join('・') : '';
+      const matching = !verdict.id && verdict.candidates.length ? '候補 ' + verdict.candidates.map(c => c.name).join('／') : '';
+      const missing = verdict.id ? [item.level === '' && 'Lv', item.limitBreak === '' && '凸', !item.mutation && '変異'].filter(Boolean) : [];
+      if (!verdict.id && verdict.candidates.length) {
+        const group = document.createElement('optgroup');
+        group.label = '照合候補';
+        for (const entry of verdict.candidates) group.append(new Option(entry.label, entry.id));
+        catalog.insertBefore(group, catalog.children[1]);
+      }
+      raw.textContent = [verdict.reason && '要確認　' + verdict.reason, missing.length && '要確認　' + missing.join('・'), matching, verdict.detail, summary,
+        observation.attack?.label && '読取攻撃力 ' + observation.attack.label,
+        verdict.inferred.length && '計算から推定　' + verdict.inferred.join('・')].filter(Boolean).join('｜');
+      level.placeholder = 'Lv確認';
+      limit.placeholder = '凸確認';
+      if (item.edited) raw.textContent = ['手動で編集中', observation.attack?.label && '読取攻撃力 ' + observation.attack.label].filter(Boolean).join('｜');
+      const edited = () => {
+        item.edited = true;
+        raw.textContent = ['手動で編集中', observation.attack?.label && '読取攻撃力 ' + observation.attack.label].filter(Boolean).join('｜');
+        updateApplyButton();
+      };
       catalog.addEventListener('change', () => {
         item.catalogId = catalog.value;
-        setMutationOptions(mutation, item);
+        item.manualId = catalog.value;
         const entry = api.catalog.find(candidate => candidate.id === item.catalogId);
+        const form = observation.mutations[entry?.id] || observation.mutations[entry?.category];
+        item.mutation = form?.quality >= 0.7 ? form.value : '';
+        setMutationOptions(mutation, item);
         limit.disabled = entry?.category === 'normal' || !entry;
-        if (limit.disabled) limit.value = '0';
+        item.limitBreak = entry?.category === 'normal' ? 0 : observation.limit?.quality >= 0.7 ? observation.limit.value : '';
+        limit.value = String(item.limitBreak);
+        item.level = observation.level?.quality >= 0.7 ? observation.level.value : '';
+        level.value = String(item.level);
+        edited();
+        reconcileParty();
+        renderResults();
+        resultRows.children[index]?.querySelector('.import-catalog')?.focus();
       });
-      mutation.addEventListener('change', () => { item.mutation = mutation.value; });
-      level.addEventListener('input', () => { item.level = level.value; });
-      limit.addEventListener('input', () => { item.limitBreak = limit.value; });
+      mutation.addEventListener('change', () => { item.mutation = mutation.value; edited(); });
+      level.addEventListener('input', () => { item.level = level.value; edited(); });
+      limit.addEventListener('input', () => { item.limitBreak = limit.value; edited(); });
 
       const initialEntry = api.catalog.find(candidate => candidate.id === item.catalogId);
       limit.disabled = initialEntry?.category === 'normal' || !initialEntry;
       row.append(number, catalog, mutation, level, limit, raw);
       resultRows.append(row);
     });
+    updateApplyButton();
     resultsBox.hidden = false;
   }
 
@@ -1230,9 +1093,7 @@
           drawPreview();
         }
       }
-      let visualAvailable = true;
       const visualTask = analyzeVisualParty(preview).catch(error => {
-        visualAvailable = false;
         console.warn('画像モデルを使わずOCRで解析を続けます', error);
         return Array.from({ length: 7 }, () => null);
       });
@@ -1272,7 +1133,7 @@
             pageMode: '7',
             whitelist: 'JKjk',
           });
-          if (normalizeText(jkText).includes('JK')) {
+          if (normalizeText(jkText).includes('JK') && grayscaleCardScore(preview, index) >= 0.74) {
             const jk = api.catalog.find(entry => entry.id === 'jk');
             if (jk) expandedDecision = { entry: jk, accepted: true, confidence: 0.96 };
           }
@@ -1282,68 +1143,34 @@
           ? `Lv${glyphLevels[index]}`
           : await readLevelText(worker, index, fullText);
 
-        let limitText = '';
-        const preliminaryEntry = fusedDecision.entry || expandedDecision.entry || visualDecision?.entry;
-        const needsLimitRead = preliminaryEntry && preliminaryEntry.category !== 'normal';
-        if (needsLimitRead) {
-          limitText = parseLimitBreak(fullText) > 0
-            ? fullText
-            : await recognizeText(worker, makeLimitCanvas(preview, index), {
-              pageMode: '7',
-              whitelist: '0123456789',
-            });
-          if (parseLimitBreak(limitText) === 0 && !parseDedicatedLimit(limitText).locked) {
-            const retryLimitText = await recognizeText(worker, makeLimitCanvas(preview, index, 'adaptive'), {
-              pageMode: '7',
-              whitelist: '0123456789',
-            });
-            limitText = parseDedicatedLimit(retryLimitText).locked
-              ? `${parseDedicatedLimit(retryLimitText).value}凸`
-              : [limitText, retryLimitText].filter(Boolean).join(' ');
-          }
+        const direct = parseDedicatedLevel(levelText);
+        const fromCard = parseLevelDirect(fullText);
+        const value = direct.locked ? direct.level : fromCard ?? direct.level;
+        const level = value == null ? null : {value, quality:glyphLevels[index] ? 0.98 : direct.locked || fromCard === value ? 0.86 : 0.48};
+        const levelConflict = glyphLevels[index] && fromCard && fromCard !== value
+          ? `Lv表示の読みが ${value} と ${fromCard} に分かれました` : '';
+        const limit = await collectLimit(worker, index, fullText, fusedDecision.entry);
+        const attackText = await recognizeText(worker, makeAttackCanvas(preview, index), {
+          pageMode:'7', whitelist:'0123456789.,KkMmBbTt',
+        });
+        const attack = window.moncolleConsensus.attackObservation(attackText, fullText);
+        const matches = mergeCandidateSources(mergeCatalogMatches([...nameTexts, fullText]), visualDecision?.candidates);
+        const names = Object.fromEntries(matches.map(c => [c.entry.id, c.score]));
+        if ((visualDecision?.entry?.id === 'jk' || names.jk >= 0.45) && grayscaleCardScore(preview, index) >= 0.90) {
+          names.jk = Math.max(names.jk || 0, 0.87);
         }
-
-        const item = inferResult([...nameTexts, fullText], levelText, limitText, fullText, preview, index);
-        if (glyphLevels[index]) item.levelEvidence = 'glyph';
-        item.catalogId = fusedDecision.accepted ? fusedDecision.entry.id : '';
-        item.confidence = fusedDecision.confidence;
-        item.ocrConfidence = expandedDecision.confidence;
-        item.visualAvailable = visualAvailable && Boolean(visualDecision);
-        item.visualConfidence = visualDecision?.confidence || 0;
-        item.visualMargin = visualDecision?.margin || 0;
-        item.visualCandidates = visualDecision?.candidates || [];
-        item.candidateMatches = mergeCandidateSources(item.candidateMatches, item.visualCandidates);
-        item.decisionSource = fusedDecision.source;
-        item.decisionConflict = fusedDecision.conflict;
-        const mutationEntry = fusedDecision.entry || preliminaryEntry;
-        const mutationDecision = classifyCatalogMutation(
-          mutationEntry,
-          nameTexts,
-          preview,
-          index,
-          [fullText, limitText].filter(Boolean).join(' '),
-        );
-        item.visualMutation = mutationDecision.mutation;
-        item.visualMutationConfidence = mutationDecision.confidence;
-        item.mutationConfidence = mutationDecision.confidence;
-        item.mutation = mutationDecision.confidence >= 0.82 ? mutationDecision.mutation : 'normal';
-        item.backgroundFeatures = mutationBackgroundFeatures(preview, index);
-        item.grayscaleScore = grayscaleCardScore(preview, index);
-        item.limitBreak = preliminaryEntry?.category === 'legend' || preliminaryEntry?.category === 'illusion'
-          ? (parseLimitBreak(nameTexts.join(' '), fullText, limitText) || parseDedicatedLimit(limitText).value)
-          : 0;
-        item.limitLocked = Boolean(item.limitBreak > 0 && (
-          parseLimitBreak(nameTexts.join(' '), fullText, limitText) > 0
-          || parseDedicatedLimit(limitText).locked
-        ));
-        item.characterLocked = fusedDecision.accepted;
-        recognized.push(item);
+        if (fusedDecision.accepted) {
+          names[fusedDecision.entry.id] = Math.max(names[fusedDecision.entry.id] || 0, fusedDecision.confidence);
+        }
+        const identity = fusedDecision.accepted && !fusedDecision.conflict && fusedDecision.confidence >= 0.82
+          ? fusedDecision.entry.id : '';
+        const observation = {names, identity, level, levelConflict, limit, attack,
+          mutations:observationsForMutation(nameTexts, fullText, index)};
+        recognized.push({observation});
       }
-      reconcileWithAttack(recognized);
-      fillUnresolvedJkByImageAndAttack(recognized);
-      fillUnresolvedNormalByNumbers(recognized);
+      reconcileParty();
       renderResults();
-      setStatus('解析しました。画像・文字・攻撃力を照合しています。キャラ名・Lv・凸・変異を確認してから反映してください。');
+      setStatus('解析しました。要確認の枠は、候補と画像を見比べて選べます。');
     } catch (error) {
       console.error(error);
       setStatus(`解析に失敗しました：${error.message}`);
@@ -1417,14 +1244,11 @@
 
   analyzeButton.addEventListener('click', analyzeImage);
   applyButton.addEventListener('click', () => {
-    const items = [...resultRows.querySelectorAll('.image-result-row')].map(row => ({
-      catalogId: row.querySelector('.import-catalog').value,
-      mutation: row.querySelector('.import-mutation').value,
-      level: row.querySelector('.import-level').value,
-      limitBreak: row.querySelector('.import-limit').value,
-    }));
+    const items = recognized.map(item => readyToApply(item) ? item : {catalogId:''});
+    const count = items.filter(item => item.catalogId).length;
+    if (!count) return;
     api.applyImportedParty(items);
-    setStatus('確認した7体を計算機へ反映しました。');
+    setStatus(`選択済みの${count}体を元の枠に反映しました。${count < 7 ? '要確認の枠は元の編成のままです。' : ''}`);
   });
 
   window.addEventListener('pagehide', () => {
