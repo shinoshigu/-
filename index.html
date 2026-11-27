@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>最適ステージ・予想時給計算機 v18.9</title>
+  <title>最適ステージ・予想時給計算機 v18.10</title>
   <style>
     :root {
       font-family: system-ui, "Noto Sans JP", sans-serif;
@@ -203,7 +203,7 @@
   </nav>
 
   <section class="panel">
-    <h1>最適ステージ・予想時給計算機 <span class="version">v18.9</span></h1>
+    <h1>最適ステージ・予想時給計算機 <span class="version">v18.10</span></h1>
     <div class="muted">編成と現在の倍率を選ぶだけで、ステージ1～75のジェム・餌・総合効率を比較できます。</div>
   </section>
 
@@ -377,8 +377,8 @@
   const HP = Array.from({ length: 75 }, (_, index) => enemyHpAtStage(index + 1));
   const UNITS = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
   const GEM_UNITS = [['QiD',48],['QD',45],['Td',42],['Dd',39],['Ud',36],['Dc',33],['No',30],['Oc',27],['Sp',24],['Sx',21],['Qi',18],['Qa',15],['T',12],['B',9],['M',6],['K',3]];
-  const STORAGE = 'stage-calculator-v18.9-20261127';
-  const OLD_STORAGES = ['stage-calculator-v18.8-20261127', 'stage-calculator-v18.7-20261127', 'stage-calculator-v18.6-20261126', 'stage-calculator-v18.5-20261126', 'stage-calculator-v18.4-20261126', 'stage-calculator-v18.3-20261126', 'stage-calculator-v18-20261125', 'stage-calculator-v17.8-20261124', 'stage-calculator-v17.7-20261124', 'stage-calculator-v17.6-20261123', 'stage-calculator-v17.5-20261123', 'stage-calculator-v17.4-20261122', 'stage-calculator-v17.3-20261122', 'stage-calculator-v17.2-20261121', 'stage-calculator-v17.1-20261121', 'stage-calculator-v17-20261121', 'stage-calculator-v16-20261121', 'stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
+  const STORAGE = 'stage-calculator-v18.10-20261127';
+  const OLD_STORAGES = ['stage-calculator-v18.9-20261127', 'stage-calculator-v18.8-20261127', 'stage-calculator-v18.7-20261127', 'stage-calculator-v18.6-20261126', 'stage-calculator-v18.5-20261126', 'stage-calculator-v18.4-20261126', 'stage-calculator-v18.3-20261126', 'stage-calculator-v18-20261125', 'stage-calculator-v17.8-20261124', 'stage-calculator-v17.7-20261124', 'stage-calculator-v17.6-20261123', 'stage-calculator-v17.5-20261123', 'stage-calculator-v17.4-20261122', 'stage-calculator-v17.3-20261122', 'stage-calculator-v17.2-20261121', 'stage-calculator-v17.1-20261121', 'stage-calculator-v17-20261121', 'stage-calculator-v16-20261121', 'stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
 
   const CHARACTERS = {
     none: { label: '特性なし', trait: 'none' },
@@ -412,7 +412,8 @@
     { id:'nyarowin', name:'ニャロウィン', hp:3.6e6, attack:182e3, character:'nyarowin' },
     { id:'awakenedNyarowin', name:'覚醒ニャロウィン', hp:22.5e6, attack:1.1e6, character:'awakenedNyarowin' },
     { id:'kabochild', name:'カボチャイルド', hp:3.6e6, attack:182e3, character:'kabochild' },
-    { id:'kyonshina', name:'キョンシーナ', hp:32.4e6, attack:1.6e6, character:'kyonshina' },
+    // HP/20 reproduces the photographed Lv100, 1凸 attack of 10.1M.
+    { id:'kyonshina', name:'キョンシーナ', hp:32.4e6, attack:1.62e6, character:'kyonshina' },
     { id:'yamata', name:'ヤマタノコロチ', hp:139.5e6, attack:6.9e6, character:'yamata' },
     // Estimated unabridged base values from the in-game attack readouts:
     // Ayatsuritch Lv129/130 = 74.3M/74.8M, King Nidra Lv100/113 = 123.9M/137.5M.
@@ -429,7 +430,8 @@
     { id:'charlotte', name:'シャーロット', hp:22.5e6, attack:1.1e6, character:'none' },
     // Awakened Lv100/0 and Lv150/10 show 59.7M and 127.3M.
     { id:'lovril', name:'ラブリル', hp:139.5e6, attack:6.977e6, character:'lovril' },
-    { id:'kubinight', name:'クビナイト', hp:241.1e6, attack:12e6, character:'kubinight' },
+    // HP/20 reproduces the photographed awakened Lv140, 0凸 attack of 138M.
+    { id:'kubinight', name:'クビナイト', hp:241.1e6, attack:12.055e6, character:'kubinight' },
   ].map(c => ({ ...c, category:'illusion', type:'legend' }));
   const CATALOG = [...NORMAL_CATALOG, ...LEGEND_CATALOG, ...ILLUSION_CATALOG];
   const CATALOG_BY_ID = Object.fromEntries(CATALOG.map(c => [c.id, c]));
@@ -1250,9 +1252,9 @@
     renderInputs(); save();
   });
   $('download').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify({ version: '18.9', ...state }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: '18.10', ...state }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob), a = document.createElement('a');
-    a.href = url; a.download = 'moncolle-calculator-v18.9-settings.json'; a.click();
+    a.href = url; a.download = 'moncolle-calculator-v18.10-settings.json'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('load').addEventListener('click', () => $('file').click());
@@ -1305,7 +1307,10 @@
 })();
 </script>
 <script src="./assets/js/level-label.js?v=18.7" defer></script>
-<script src="./assets/js/party-consensus.js?v=18.9" defer></script>
-<script src="./assets/js/image-import.js?v=18.9" defer></script>
+<script src="./assets/js/card-row.js?v=18.10" defer></script>
+<script src="./assets/model/card-signatures.js?v=18.10" defer></script>
+<script src="./assets/js/small-labels.js?v=18.10" defer></script>
+<script src="./assets/js/party-consensus.js?v=18.10" defer></script>
+<script src="./assets/js/image-import.js?v=18.10" defer></script>
 </body>
 </html>

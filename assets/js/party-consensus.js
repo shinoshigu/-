@@ -59,7 +59,8 @@
     const conflicts = [];
     if (row.identity && row.identity !== entry.id) conflicts.push('名前・キャラ画像と不一致');
     if (!canLimit && reliable(row.limit) && row.limit.value > 0) conflicts.push('通常キャラに凸表示があります');
-    const levelValues = reliable(row.level) ? [row.level.value] : levels;
+    const levelValues = reliable(row.level) ? [row.level.value] :
+      row.plausibleLevels?.length ? row.plausibleLevels.map(c=>c.value) : levels;
     const limitValues = !canLimit ? [0] : reliable(row.limit) ? [row.limit.value] : limits;
     const formValues = !hasForm ? ['normal'] : reliable(mutation) ? [mutation.value]
       : api.mutations[entry.category].map(option => option.id);
@@ -164,6 +165,29 @@
         : !accepted && anchor ? alternatives(api, row, anchor) : ''};
   }
 
+  // A strongly identified portrait can retain its name even when a normal card's
+  // background disagrees with its displayed attack. Leave the disputed form for review.
+  function reviewForm(api, row, verdict) {
+    if (verdict.id || !row.artId || (row.identity && row.identity!==row.artId) ||
+        row.levelConflict || !reliable(row.attack) || row.limit?.value>0) return verdict;
+    const entry=api.catalog.find(e=>e.id===row.artId);
+    if (entry?.category!=='normal' || !row.plausibleLevels?.length) return verdict;
+    const supported=reliable(row.level) ? [row.level.value] :
+      [...new Set([...row.plausibleLevels,...(row.alternateLevels||[])].map(c=>c.value))];
+    const matches=[];
+    for(const level of supported) for(const form of api.mutations.normal) {
+      if(fits(api.attackAtLevel(entry,form.id,level,0,false),row.attack)) matches.push({level,form});
+    }
+    if(matches.length!==1) return verdict;
+    const {level,form}=matches[0];
+    const observed=row.mutations.normal;
+    if(observed?.value===form.id) return verdict;
+    const visualLabel=api.mutations.normal.find(m=>m.id===observed?.value)?.label;
+    return {...verdict,id:entry.id,reason:'',values:{level,limit:0},candidates:[entry],
+      evidence:['名前','Lv','攻撃力'],inferred:reliable(row.level)?[]:['Lv'],
+      detail:(visualLabel?'背景は'+visualLabel+'、':'')+'表示攻撃力は'+form.label+'相当。変異を確認してください'};
+  }
+
   // Enumerate only three roles per slot; the other 93 characters share the same
   // pairing behavior. Attack calculations are cached outside the 3^7 search.
   function resolveParty(api, rows) {
@@ -254,7 +278,7 @@
       } else if (pairIds.includes(verdict.id) && pairIds.includes(row.identity) && verdict.id !== row.identity) {
         verdict.detail = '名前の読みが食い違ったため、他の枠の相方と表示攻撃力で判定';
       }
-      return verdict;
+      return reviewForm(api,row,verdict);
     });
   }
 

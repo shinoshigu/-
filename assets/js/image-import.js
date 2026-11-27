@@ -25,12 +25,14 @@
   const CATEGORY_LABELS = { normal: '通常', legend: '伝説', illusion: '幻' };
   let sourceImage = null;
   let ocrWorker = null;
+  let numericWorker = null;
   let openCvPromise = null;
   let openCvUnavailable = false;
   let visionPromise = null;
   let recognized = [];
   let cropWasAdjusted = false;
   let autoCropRefined = false;
+  let smallRow = null;
 
   const VISION_RUNTIME = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/';
   const VISION_CONFIG = './assets/model/character-classifier.json';
@@ -132,6 +134,13 @@
   function drawPreview() {
     const rect = cropRect();
     if (!rect) return;
+    smallRow = null;
+    if (!cropWasAdjusted && rect.width <= 1050 && rect.width / rect.height >= 2.7 && rect.height >= 52) {
+      const native = document.createElement('canvas');
+      drawCropToCanvas(native, rect, Math.round(rect.width));
+      smallRow = window.moncolleCardRow?.normalize(native, preview);
+      if (smallRow) return;
+    }
     const targetWidth = Math.min(1600, Math.max(1000, Math.round(rect.width)));
     drawCropToCanvas(preview, rect, targetWidth);
   }
@@ -489,6 +498,7 @@
   }
 
   function makeNameCanvas(rowCanvas, index, variant = 'loose') {
+    if (smallRow) return smallLineCanvas(rowCanvas, index, 'name', variant);
     const bottoms = effectiveMode() === 'party'
       ? { strict: 0.24, loose: 0.3, adaptive: 0.34 }
       : { strict: 0.18, loose: 0.22, adaptive: 0.26 };
@@ -512,6 +522,7 @@
   }
 
   function makeLevelCanvas(rowCanvas, index, hasAttackStats, variant = 'loose') {
+    if (smallRow) return smallLineCanvas(rowCanvas, index, 'level', variant);
     return makeTextCanvas(rowCanvas, index, {
       // Lv is always drawn at the lower-right of the character card. The old
       // crop included most of the illustration, so OCR often reduced Lv150
@@ -525,6 +536,7 @@
   }
 
   function makeLimitCanvas(rowCanvas, index, variant = 'loose') {
+    if (smallRow) return smallLineCanvas(rowCanvas, index, 'limit', variant);
     return makeTextCanvas(rowCanvas, index, {
       top: 0,
       bottom: 0.16,
@@ -542,6 +554,41 @@
       right: 1,
       variant: 'strict',
     });
+  }
+
+  function smallLineCanvas(row, index, field, variant) {
+    // Coordinates are in card pitches after the seven individual cards have been aligned.
+    const bounds = {name:[0,.195,1,.368],level:[.43,.865,1,1.082],
+      limit:[.25,.005,.77,.223],attack:[.035,1.143,1,1.40]};
+    const [l,t,r,b]=bounds[field], pitch=row.width/7;
+    const width=Math.round((r-l)*pitch), height=Math.round((b-t)*pitch);
+    const image=row.getContext('2d').getImageData(Math.round((index+l)*pitch),Math.round(t*pitch),width,height);
+    const mask=new Uint8Array(width*height);
+    let left=width, right=-1, top=height, bottom=-1;
+    const low=variant==='strict'?125:variant==='loose'?90:65;
+    for(let i=0;i<mask.length;i++) {
+      const j=4*i, white=Math.min(image.data[j],image.data[j+1],image.data[j+2]);
+      const ink=Math.min(255,Math.max(0,(white-low)*3.6));
+      mask[i]=ink;
+      if(ink>100) {
+        left=Math.min(left,i%width);right=Math.max(right,i%width);
+        top=Math.min(top,Math.floor(i/width));bottom=Math.max(bottom,Math.floor(i/width));
+      }
+    }
+    const source=document.createElement('canvas');
+    source.width=width;source.height=height;
+    for(let i=0;i<mask.length;i++) {
+      const gray=255-mask[i], j=4*i;
+      image.data[j]=gray;image.data[j+1]=gray;image.data[j+2]=gray;image.data[j+3]=255;
+    }
+    source.getContext('2d').putImageData(image,0,0);
+    if(right<left) return source;
+    const w=right-left+1,h=bottom-top+1, scale=Math.min(4,38/h);
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.ceil(w*scale)+20;canvas.height=Math.ceil(h*scale)+20;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(source,left,top,w,h,10,10,w*scale,h*scale);
+    return canvas;
   }
 
   function normalizeText(value) {
@@ -1105,6 +1152,17 @@
       }
       recognized = [];
       const glyphLevels = window.moncolleLevelLabels?.readRow(preview) || [];
+      const artReads = smallRow ? window.moncolleCardRow.matchArt(smallRow.readings) : [];
+      let smallLabels = [];
+      let digitsWorker=worker;
+      if (smallRow) {
+        try { smallLabels = window.moncolleSmallLabels?.read(smallRow) || []; }
+        catch (error) { console.warn('小さい文字の字形照合を省略します', error); }
+        try {
+          numericWorker ||= await window.Tesseract.createWorker('eng',1);
+          digitsWorker=numericWorker;
+        } catch (error) { console.warn('既存のOCRで数字を読み取ります',error); }
+      }
       const nameRecords = [];
       for (let index = 0; index < 7; index += 1) {
         setStatus(`キャラ${index + 1}/7の名前を読み取っています…`);
@@ -1146,14 +1204,44 @@
         const direct = parseDedicatedLevel(levelText);
         const fromCard = parseLevelDirect(fullText);
         const value = direct.locked ? direct.level : fromCard ?? direct.level;
-        const level = value == null ? null : {value, quality:glyphLevels[index] ? 0.98 : direct.locked || fromCard === value ? 0.86 : 0.48};
-        const levelConflict = glyphLevels[index] && fromCard && fromCard !== value
+        let level = value == null ? null : {value, quality:glyphLevels[index] ? 0.98 : direct.locked || fromCard === value ? 0.86 : 0.48};
+        const small = smallLabels[index];
+        const plausibleLevels = small?.levels.filter(c=>c.score>=0.57 && c.score>=small.levels[0].score-.10) || [];
+        const glyphSupported=!plausibleLevels.length || plausibleLevels.some(c=>c.value===glyphLevels[index]);
+        if ((!glyphLevels[index] || !glyphSupported) && plausibleLevels.length) {
+          const top = plausibleLevels[0];
+          if (plausibleLevels.some(c=>c.value===value && c.score>=top.score-.045)) level = {value, quality:0.87};
+          else if (top.score>=0.76 && top.score-small.levels[1].score>=.045) level={value:top.value,quality:.81};
+          else level = {value:top.value, quality:.55};
+        }
+        const levelConflict = glyphSupported && glyphLevels[index] && fromCard && fromCard !== value
           ? `Lv表示の読みが ${value} と ${fromCard} に分かれました` : '';
-        const limit = await collectLimit(worker, index, fullText, fusedDecision.entry);
+        let limit = await collectLimit(worker, index, fullText, fusedDecision.entry);
+        if (small?.blank && !limit) limit = {value:0, quality:.84};
+        else if (small && !limit && small.badges[0].score>=.75 && small.badges[0].score-small.badges[1].score>=.017) {
+          limit = {value:small.badges[0].value, quality:.83};
+        }
         const attackText = await recognizeText(worker, makeAttackCanvas(preview, index), {
           pageMode:'7', whitelist:'0123456789.,KkMmBbTt',
         });
-        const attack = window.moncolleConsensus.attackObservation(attackText, fullText);
+        let attack = window.moncolleConsensus.attackObservation(attackText, fullText);
+        if (smallRow && (!attack || attack.quality !== .98)) {
+          const reads=[];
+          const attempts=[[preview,'loose',worker],[preview,'strict',digitsWorker],[smallRow.local,'loose',worker],
+            [smallRow.local,'strict',worker],[smallRow.local,'adaptive',digitsWorker]];
+          for(const [source,variant,reader] of attempts) {
+            const text=await recognizeText(reader,smallLineCanvas(source,index,'attack',variant),{
+              pageMode:'7',whitelist:'0123456789.,KkMmBbTt'});
+            const read=window.moncolleConsensus.attackObservation(text,'');
+            if(!read || read.value<1000) continue;
+            reads.push(read);
+            const agreement=reads.filter(r=>r.value===read.value).length>=2;
+            if(agreement || read.value===attack?.value || attack?.alternatives?.some(r=>r.value===read.value)) {
+              attack={...read,quality:.94}; break;
+            }
+          }
+          if((!attack || attack.quality<.7) && reads.length===1) attack=reads[0];
+        }
         const matches = mergeCandidateSources(mergeCatalogMatches([...nameTexts, fullText]), visualDecision?.candidates);
         const names = Object.fromEntries(matches.map(c => [c.entry.id, c.score]));
         if ((visualDecision?.entry?.id === 'jk' || names.jk >= 0.45) && grayscaleCardScore(preview, index) >= 0.90) {
@@ -1162,9 +1250,19 @@
         if (fusedDecision.accepted) {
           names[fusedDecision.entry.id] = Math.max(names[fusedDecision.entry.id] || 0, fusedDecision.confidence);
         }
-        const identity = fusedDecision.accepted && !fusedDecision.conflict && fusedDecision.confidence >= 0.82
+        let identity = fusedDecision.accepted && !fusedDecision.conflict && fusedDecision.confidence >= 0.82
           ? fusedDecision.entry.id : '';
-        const observation = {names, identity, level, levelConflict, limit, attack,
+        const art=artReads[index];
+        const artEntry=art && api.catalog.find(e=>e.name===art.name);
+        const strongArt=artEntry && art.score>=.47 && art.margin>=.14;
+        if (artEntry && (strongArt || (art.score>=.32 && art.margin>=.09 && (!identity || identity===artEntry.id)))) {
+          names[artEntry.id]=Math.max(names[artEntry.id]||0,strongArt ? .96 : .75);
+          if(strongArt && !identity) identity=artEntry.id;
+        }
+        const alternateLevels=small?.levels.filter(c=>c.score>=.54 && c.score>=small.levels[0].score-.16 &&
+          String(c.value).length===String(small.levels[0].value).length &&
+          [...String(c.value)].filter((d,i)=>d!==String(small.levels[0].value)[i]).length<=1) || [];
+        const observation = {names, identity, level, levelConflict, limit, attack, plausibleLevels, alternateLevels, artId:strongArt?artEntry.id:'',
           mutations:observationsForMutation(nameTexts, fullText, index)};
         recognized.push({observation});
       }
@@ -1253,5 +1351,6 @@
 
   window.addEventListener('pagehide', () => {
     if (ocrWorker) ocrWorker.terminate();
+    if (numericWorker) numericWorker.terminate();
   }, { once: true });
 })();
