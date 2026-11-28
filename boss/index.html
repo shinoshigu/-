@@ -3,90 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ボス戦計算機 v18.10</title>
-  <style>
-    :root {
-      font-family: system-ui, "Noto Sans JP", sans-serif;
-      color: #182538;
-      background: #f3f6fa;
-      font-size: 16px;
-    }
-    * { box-sizing: border-box; }
-    body { margin: 0; padding: 22px 12px; }
-    .wrap { max-width: 960px; margin: auto; }
-    .mode-nav {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 6px;
-      padding: 6px;
-      margin: 0 0 14px;
-      background: #fff;
-      border: 1px solid #dce4ed;
-      border-radius: 12px;
-      box-shadow: 0 2px 8px #1e304608;
-    }
-    .mode-link {
-      display: block;
-      padding: 12px 16px;
-      border-radius: 8px;
-      color: #53667b;
-      text-align: center;
-      text-decoration: none;
-      font-weight: 750;
-    }
-    .mode-link:hover { background: #f3f6fa; }
-    .mode-link.active { color: #fff; background: #175aa6; }
-    .panel {
-      background: #fff;
-      border: 1px solid #dce4ed;
-      border-radius: 12px;
-      padding: 20px;
-      margin: 0 0 14px;
-      box-shadow: 0 2px 8px #1e304608;
-    }
-    h1 { font-size: 1.45rem; margin: 0 0 7px; }
-    .version { font-size: .8rem; color: #728398; }
-    h2 { font-size: 1.08rem; margin: 0 0 14px; }
-    .muted { color: #576b80; font-size: .9rem; line-height: 1.7; }
-    .status {
-      display: inline-block;
-      margin-top: 12px;
-      padding: 6px 10px;
-      color: #1557a2;
-      background: #eef5ff;
-      border-radius: 999px;
-      font-size: .86rem;
-      font-weight: 750;
-    }
-    .slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-    .slot {
-      min-height: 104px;
-      display: grid;
-      place-items: center;
-      padding: 14px;
-      color: #718297;
-      background: #fbfcfe;
-      border: 1px dashed #b9c8d7;
-      border-radius: 9px;
-      text-align: center;
-    }
-    @media (max-width: 560px) {
-      body { padding: 10px 6px; }
-      .panel { padding: 15px; }
-      .slots { grid-template-columns: 1fr; }
-      .slot { min-height: 74px; }
-    }
-  </style>
+  <title>ボス戦計算機 v18.11</title>
+  <link rel="stylesheet" href="../assets/css/boss.css?v=18.11">
 </head>
 <body>
 <main class="wrap">
   <nav class="mode-nav" aria-label="計算機の切り替え">
     <a class="mode-link" href="../index.html">ステージ</a>
-    <a class="mode-link active" href="./" aria-current="page">ボス</a>
+    <a class="mode-link active" href="./index.html" aria-current="page">ボス</a>
   </nav>
 
   <section class="panel">
-    <h1>ボス戦計算機 <span class="version">v18.10</span></h1>
+    <h1>ボス戦計算機 <span class="version">v18.11</span></h1>
     <p class="muted">ボス戦の詳細が判明してから、正確な計算機を追加します。</p>
     <span class="status">準備中</span>
   </section>

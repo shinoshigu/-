@@ -1,7 +1,7 @@
-(() => {
+function initializeMoncolleImageImport(api) {
   'use strict';
 
-  const api = window.moncolleCalculator;
+
   const byId = id => document.getElementById(id);
   const fileInput = byId('partyImageFile');
   const modeInput = byId('partyImageMode');
@@ -22,6 +22,9 @@
 
   if (!api || !fileInput || !modeInput || !analyzeButton || !preview) return;
 
+  const byModelId = new Map(api.catalog.filter(entry => entry.modelId).map(entry => [entry.modelId, entry]));
+  const byName = new Map(api.catalog.map(entry => [entry.name, entry]));
+  const byCatalogId = new Map(api.catalog.map(entry => [entry.id, entry]));
   const CATEGORY_LABELS = { normal: '通常', legend: '伝説', illusion: '幻' };
   let sourceImage = null;
   let ocrWorker = null;
@@ -150,14 +153,20 @@
       const existing = document.querySelector(`script[src="${src}"]`);
       if (existing) {
         if (isReady()) resolve();
-        else existing.addEventListener('load', resolve, { once: true });
+        else {
+          existing.addEventListener('load', resolve, { once: true });
+          existing.addEventListener('error', () => reject(new Error('画像解析ライブラリを読み込めませんでした')), { once: true });
+        }
         return;
       }
       const script = document.createElement('script');
       script.src = src;
       script.async = true;
       script.onload = resolve;
-      script.onerror = () => reject(new Error('画像解析ライブラリを読み込めませんでした'));
+      script.onerror = () => {
+        script.remove();
+        reject(new Error('画像解析ライブラリを読み込めませんでした'));
+      };
       document.head.append(script);
     });
   }
@@ -389,7 +398,7 @@
         .sort((left, right) => right.probability - left.probability);
       const candidates = order.slice(0, 5).map(candidate => {
         const label = config.labels[candidate.classIndex];
-        const entry = api.catalog.find(item => item.name === label.name);
+        const entry = byModelId.get(label.id) || byName.get(label.name);
         return entry ? { entry, mutation: 'normal', score: candidate.probability, source: 'vision' } : null;
       }).filter(Boolean);
       const first = candidates[0] || null;
@@ -995,7 +1004,7 @@
   }
 
   function setMutationOptions(select, item) {
-    const entry = api.catalog.find(candidate => candidate.id === item.catalogId);
+    const entry = byCatalogId.get(item.catalogId);
     const options = api.mutations[entry?.category] || [{id:'normal', label:'—'}];
     select.replaceChildren();
     if (options.length > 1) select.add(new Option('変異を確認', ''));
@@ -1098,7 +1107,7 @@
       catalog.addEventListener('change', () => {
         item.catalogId = catalog.value;
         item.manualId = catalog.value;
-        const entry = api.catalog.find(candidate => candidate.id === item.catalogId);
+        const entry = byCatalogId.get(item.catalogId);
         const form = observation.mutations[entry?.id] || observation.mutations[entry?.category];
         item.mutation = form?.quality >= 0.7 ? form.value : '';
         setMutationOptions(mutation, item);
@@ -1116,7 +1125,7 @@
       level.addEventListener('input', () => { item.level = level.value; edited(); });
       limit.addEventListener('input', () => { item.limitBreak = limit.value; edited(); });
 
-      const initialEntry = api.catalog.find(candidate => candidate.id === item.catalogId);
+      const initialEntry = byCatalogId.get(item.catalogId);
       limit.disabled = initialEntry?.category === 'normal' || !initialEntry;
       row.append(number, catalog, mutation, level, limit, raw);
       resultRows.append(row);
@@ -1152,6 +1161,10 @@
       }
       recognized = [];
       const glyphLevels = window.moncolleLevelLabels?.readRow(preview) || [];
+      if (smallRow && !window.moncolleCardSignatures) {
+        try { await loadScript('./assets/model/card-signatures.js?v=18.10', () => Boolean(window.moncolleCardSignatures)); }
+        catch (error) { console.warn('カード画像の照合データを読み込めませんでした', error); }
+      }
       const artReads = smallRow ? window.moncolleCardRow.matchArt(smallRow.readings) : [];
       let smallLabels = [];
       let digitsWorker=worker;
@@ -1192,7 +1205,7 @@
             whitelist: 'JKjk',
           });
           if (normalizeText(jkText).includes('JK') && grayscaleCardScore(preview, index) >= 0.74) {
-            const jk = api.catalog.find(entry => entry.id === 'jk');
+            const jk = byCatalogId.get('jk');
             if (jk) expandedDecision = { entry: jk, accepted: true, confidence: 0.96 };
           }
         }
@@ -1253,7 +1266,7 @@
         let identity = fusedDecision.accepted && !fusedDecision.conflict && fusedDecision.confidence >= 0.82
           ? fusedDecision.entry.id : '';
         const art=artReads[index];
-        const artEntry=art && api.catalog.find(e=>e.name===art.name);
+        const artEntry=art && byName.get(art.name);
         const strongArt=artEntry && art.score>=.47 && art.margin>=.14;
         if (artEntry && (strongArt || (art.score>=.32 && art.margin>=.09 && (!identity || identity===artEntry.id)))) {
           names[artEntry.id]=Math.max(names[artEntry.id]||0,strongArt ? .96 : .75);
@@ -1353,4 +1366,4 @@
     if (ocrWorker) ocrWorker.terminate();
     if (numericWorker) numericWorker.terminate();
   }, { once: true });
-})();
+}
