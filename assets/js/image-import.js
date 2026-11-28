@@ -25,7 +25,6 @@ function initializeMoncolleImageImport(api) {
   const byModelId = new Map(api.catalog.filter(entry => entry.modelId).map(entry => [entry.modelId, entry]));
   const byName = new Map(api.catalog.map(entry => [entry.name, entry]));
   const byCatalogId = new Map(api.catalog.map(entry => [entry.id, entry]));
-  const CATEGORY_LABELS = { normal: '通常', legend: '伝説', illusion: '幻' };
   let sourceImage = null;
   let ocrWorker = null;
   let numericWorker = null;
@@ -971,7 +970,7 @@ function initializeMoncolleImageImport(api) {
 
   async function collectLimit(worker, index, fullText, preliminary) {
     const fromCard = limitObservation(fullText);
-    if (fromCard || preliminary?.category === 'normal') return fromCard;
+    if (fromCard || (preliminary && !api.supportsLimitBreak(preliminary.category))) return fromCard;
     const options = {pageMode:'7', whitelist:'0123456789凸'};
     const first = limitObservation(await recognizeText(worker, makeLimitCanvas(preview, index), options), true);
     if (!first || first.quality > 0.9) return first;
@@ -993,9 +992,9 @@ function initializeMoncolleImageImport(api) {
 
   function addCatalogOptions(select) {
     select.add(new Option('要確認・キャラを選択', ''));
-    for (const category of ['normal', 'legend', 'illusion']) {
+    for (const [category, label] of Object.entries(api.categoryLabels)) {
       const group = document.createElement('optgroup');
-      group.label = CATEGORY_LABELS[category];
+      group.label = label;
       for (const entry of api.catalog.filter(item => item.category === category)) {
         group.append(new Option(entry.label, entry.id));
       }
@@ -1111,8 +1110,8 @@ function initializeMoncolleImageImport(api) {
         const form = observation.mutations[entry?.id] || observation.mutations[entry?.category];
         item.mutation = form?.quality >= 0.7 ? form.value : '';
         setMutationOptions(mutation, item);
-        limit.disabled = entry?.category === 'normal' || !entry;
-        item.limitBreak = entry?.category === 'normal' ? 0 : observation.limit?.quality >= 0.7 ? observation.limit.value : '';
+        limit.disabled = !api.supportsLimitBreak(entry?.category);
+        item.limitBreak = entry && limit.disabled ? 0 : observation.limit?.quality >= 0.7 ? observation.limit.value : '';
         limit.value = String(item.limitBreak);
         item.level = observation.level?.quality >= 0.7 ? observation.level.value : '';
         level.value = String(item.level);
@@ -1126,7 +1125,7 @@ function initializeMoncolleImageImport(api) {
       limit.addEventListener('input', () => { item.limitBreak = limit.value; edited(); });
 
       const initialEntry = byCatalogId.get(item.catalogId);
-      limit.disabled = initialEntry?.category === 'normal' || !initialEntry;
+      limit.disabled = !api.supportsLimitBreak(initialEntry?.category);
       row.append(number, catalog, mutation, level, limit, raw);
       resultRows.append(row);
     });

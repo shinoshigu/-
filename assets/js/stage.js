@@ -1,11 +1,13 @@
 function initializeMoncolleStage(rules) {
   'use strict';
   const { CATALOG, CATALOG_BY_ID, CHARACTERS, MUTATIONS, UNITS, BOSS_MODEL,
+    CATEGORY_LABELS, ATTACK_PERIODS, attackType, supportsLimitBreak,
     catalogEntries, catalogLabel, formatStat, attackAtLevel, resolveParty } = rules;
   const { stageCount, MODEL, estimate, rankStages, gemMultiplier, foodRates } = createMoncolleSimulation(rules);
 
   const GEM_UNITS = [['QiD',48],['QD',45],['Td',42],['Dd',39],['Ud',36],['Dc',33],['No',30],['Oc',27],['Sp',24],['Sx',21],['Qi',18],['Qa',15],['T',12],['B',9],['M',6],['K',3]];
-  const STORAGE = 'stage-calculator-v18.10-20261127';
+  const STORAGE = 'stage-calculator-v19';
+  const PREVIOUS_STORAGE = 'stage-calculator-v18.10-20261127';
   const OLD_STORAGES = ['stage-calculator-v18.9-20261127', 'stage-calculator-v18.8-20261127', 'stage-calculator-v18.7-20261127', 'stage-calculator-v18.6-20261126', 'stage-calculator-v18.5-20261126', 'stage-calculator-v18.4-20261126', 'stage-calculator-v18.3-20261126', 'stage-calculator-v18-20261125', 'stage-calculator-v17.8-20261124', 'stage-calculator-v17.7-20261124', 'stage-calculator-v17.6-20261123', 'stage-calculator-v17.5-20261123', 'stage-calculator-v17.4-20261122', 'stage-calculator-v17.3-20261122', 'stage-calculator-v17.2-20261121', 'stage-calculator-v17.1-20261121', 'stage-calculator-v17-20261121', 'stage-calculator-v16-20261121', 'stage-calculator-v15-20261119', 'stage-calculator-v14-20261119', 'stage-calculator-v13-20261119', 'stage-calculator-v12-20261119', 'stage-calculator-v10-20261117'];
 
   const OLD_TRAIT_TO_CHARACTER = {
@@ -29,7 +31,7 @@ function initializeMoncolleStage(rules) {
   }
 
   function normalizeChar(c) {
-    if (c && ['normal','legend','illusion','manual'].includes(c.category)) {
+    if (c && (Object.hasOwn(CATEGORY_LABELS, c.category) || c.category === 'manual')) {
       const level = Math.min(150, Math.max(1, Math.round(Number(c.level) || 1)));
       const limitBreak = Math.min(10, Math.max(0, Math.round(Number(c.limitBreak) || 0)));
       const savedEntry = CATALOG_BY_ID[c.catalogId];
@@ -42,7 +44,7 @@ function initializeMoncolleStage(rules) {
         catalogId: CATALOG_BY_ID[c.catalogId]?.category === category ? c.catalogId : '',
         manualAttackUnit: Object.hasOwn(UNITS,c.manualAttackUnit) ? c.manualAttackUnit : 'M',
         manualHpUnit: Object.hasOwn(UNITS,c.manualHpUnit) ? c.manualHpUnit : 'M',
-        manualType: ['normal','legend'].includes(c.manualType) ? c.manualType : (category === 'normal' ? 'normal' : 'legend'),
+        manualType: Object.hasOwn(ATTACK_PERIODS, c.manualType) ? c.manualType : (category === 'manual' ? 'legend' : attackType(category)),
         manualCharacter: Object.hasOwn(CHARACTERS,c.manualCharacter) ? c.manualCharacter : 'none',
       };
     }
@@ -74,14 +76,14 @@ function initializeMoncolleStage(rules) {
 
   let state = emptyState();
   try {
-    const stored = localStorage.getItem(STORAGE) || OLD_STORAGES.map(key => localStorage.getItem(key)).find(Boolean);
+    const stored = localStorage.getItem(STORAGE) || localStorage.getItem(PREVIOUS_STORAGE) || OLD_STORAGES.map(key => localStorage.getItem(key)).find(Boolean);
     if (stored) state = validate(JSON.parse(stored));
   } catch (_) {}
 
   const $ = id => document.getElementById(id);
   const charsEl = $('chars');
   const characterOptions = Object.entries(CHARACTERS).map(([id,c]) => `<option value="${id}">${c.label}</option>`).join('');
-  for (const category of ['normal', 'legend', 'illusion']) {
+  for (const category of Object.keys(CATEGORY_LABELS)) {
     const list = document.createElement('datalist');
     list.id = 'catalog-' + category;
     for (const entry of catalogEntries(category)) list.append(new Option(catalogLabel(entry), catalogLabel(entry)));
@@ -95,7 +97,7 @@ function initializeMoncolleStage(rules) {
   }
   function derivedHtml(r) {
     const trait = CHARACTERS[r.character]?.label || '特性なし';
-    return `HP ${formatStat(r.hp)}<br>攻撃 ${formatStat(r.power, 'bag')}<br>${r.truePair?'真の力｜':''}${trait}`;
+    return `HP ${formatStat(r.hp)}<br>攻撃 ${formatStat(r.power, 'bag')}${r.power > 0 ? `（${ATTACK_PERIODS[r.type]}秒に1回）` : ''}<br>${r.truePair?'真の力｜':''}${trait}`;
   }
   function updateDerivedRows() {
     const resolved = resolveParty(state.chars, state.enemyType);
@@ -111,7 +113,7 @@ function initializeMoncolleStage(rules) {
         : `<input value="手動入力" aria-label="キャラ${i+1}の入力方式" disabled>`;
       const mutations = MUTATIONS[c.category];
       const mutationField = mutations ? `<select aria-label="キャラ${i+1}の変異" data-i="${i}" data-k="mutation">${Object.entries(mutations).map(([id,[label]])=>`<option value="${id}" ${c.mutation===id?'selected':''}>${label}</option>`).join('')}</select>` : `<span></span>`;
-      const hasLimitBreak = c.category === 'legend' || c.category === 'illusion';
+      const hasLimitBreak = supportsLimitBreak(c.category);
       const growthFields = `<div class="growth-fields ${hasLimitBreak?'':'single'}">
         <label class="char-number"><span>Lv</span><input type="number" min="1" max="150" step="1" value="${c.level}" aria-label="キャラ${i+1}のレベル" data-i="${i}" data-k="level"></label>
         ${hasLimitBreak ? `<label class="char-number"><span>凸</span><input type="number" min="0" max="10" step="1" value="${c.limitBreak}" aria-label="キャラ${i+1}の凸数" data-i="${i}" data-k="limitBreak"></label>` : ''}
@@ -123,13 +125,13 @@ function initializeMoncolleStage(rules) {
         <select aria-label="キャラ${i+1}の攻撃単位" data-i="${i}" data-k="manualAttackUnit">${Object.keys(UNITS).map(u=>`<option ${c.manualAttackUnit===u?'selected':''}>${u}</option>`).join('')}</select>
         <input type="number" min="0" step="any" value="${escapeAttribute(c.manualHp)}" placeholder="Lv1 HP" aria-label="キャラ${i+1}のLv1 HP" data-i="${i}" data-k="manualHp">
         <select aria-label="キャラ${i+1}のHP単位" data-i="${i}" data-k="manualHpUnit">${Object.keys(UNITS).map(u=>`<option ${c.manualHpUnit===u?'selected':''}>${u}</option>`).join('')}</select>
-        <select aria-label="キャラ${i+1}の攻撃間隔" data-i="${i}" data-k="manualType"><option value="normal" ${c.manualType==='normal'?'selected':''}>通常（1秒）</option><option value="legend" ${c.manualType==='legend'?'selected':''}>伝説・幻（3秒）</option></select>
+        <select aria-label="キャラ${i+1}の攻撃間隔" data-i="${i}" data-k="manualType">${Object.entries(ATTACK_PERIODS).map(([type, seconds]) => `<option value="${type}" ${c.manualType===type?'selected':''}>${type==='legend'?'伝説・幻':CATEGORY_LABELS[type]}（${seconds}秒）</option>`).join('')}</select>
         <select aria-label="キャラ${i+1}の手動特性" data-i="${i}" data-k="manualCharacter">${characterOptions.replace(`value="${c.manualCharacter}"`,`value="${c.manualCharacter}" selected`)}</select>
       </div>` : '';
       const r = resolved[i];
       return `<div class="char">
         <span class="name">キャラ${i+1}</span>
-        <select aria-label="キャラ${i+1}のカテゴリ" data-i="${i}" data-k="category"><option value="normal" ${c.category==='normal'?'selected':''}>通常</option><option value="legend" ${c.category==='legend'?'selected':''}>伝説</option><option value="illusion" ${c.category==='illusion'?'selected':''}>幻</option><option value="manual" ${c.category==='manual'?'selected':''}>手動</option></select>
+        <select aria-label="キャラ${i+1}のカテゴリ" data-i="${i}" data-k="category">${Object.entries(CATEGORY_LABELS).map(([category, label]) => `<option value="${category}" ${c.category===category?'selected':''}>${label}</option>`).join('')}<option value="manual" ${c.category==='manual'?'selected':''}>手動</option></select>
         ${catalogField}${mutationField}
         ${growthFields}
         <div class="derived" data-derived="${i}">${derivedHtml(r)}</div>
@@ -421,8 +423,7 @@ function initializeMoncolleStage(rules) {
       c.category = el.value;
       c.catalogId = '';
       c.mutation = 'normal';
-      if (c.category === 'legend' || c.category === 'illusion') c.manualType = 'legend';
-      if (c.category === 'normal') c.manualType = 'normal';
+      if (c.category !== 'manual') c.manualType = attackType(c.category);
     } else if (el.dataset.k) {
       c[el.dataset.k] = el.value;
       if (el.dataset.k === 'level') c.level = String(Math.min(150,Math.max(1,Math.round(Number(el.value)||1))));
@@ -481,9 +482,9 @@ function initializeMoncolleStage(rules) {
     renderInputs(); save();
   });
   $('download').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify({ version: '18.11', ...state }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: '19', ...state }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob), a = document.createElement('a');
-    a.href = url; a.download = 'moncolle-calculator-v18.11-settings.json'; a.click();
+    a.href = url; a.download = 'moncolle-calculator-v19-settings.json'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('load').addEventListener('click', () => $('file').click());
@@ -496,7 +497,7 @@ function initializeMoncolleStage(rules) {
   });
 
   window.moncolleCalculator = {
-    attackAtLevel,
+    attackAtLevel, supportsLimitBreak, categoryLabels: CATEGORY_LABELS,
     catalog: CATALOG.map(entry => ({
       id: entry.id,
       no: entry.no || null,
@@ -520,11 +521,11 @@ function initializeMoncolleStage(rules) {
         next.category = entry.category;
         next.catalogId = entry.id;
         next.level = String(Math.min(150, Math.max(1, Math.round(Number(item.level) || 1))));
-        next.limitBreak = String(entry.category === 'legend' || entry.category === 'illusion'
+        next.limitBreak = String(supportsLimitBreak(entry.category)
           ? Math.min(10, Math.max(0, Math.round(Number(item.limitBreak) || 0)))
           : 0);
         next.mutation = Object.hasOwn(MUTATIONS[entry.category] || {}, item.mutation) ? item.mutation : 'normal';
-        next.manualType = entry.category === 'normal' ? 'normal' : 'legend';
+        next.manualType = entry.type;
         state.chars[index] = next;
       });
       renderInputs();

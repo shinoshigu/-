@@ -7,7 +7,11 @@ function createMoncolleCharacters(data) {
   const growth = data.normalGrowth;
   if (!Number.isFinite(CHARACTERS.lovril.interval) || CHARACTERS.lovril.interval <= 0)
     throw new Error('ラブリルの回復間隔には正の秒数を指定してください');
-  const categories = { normal: [], legend: [], illusion: [] };
+  const CATEGORY_LABELS = { normal: '通常', legend: '伝説', illusion: '幻', boss: 'ボス' };
+  const ATTACK_PERIODS = { normal: 1, legend: 2.5, boss: 2 };
+  const categories = Object.fromEntries(Object.keys(CATEGORY_LABELS).map(key => [key, []]));
+  function attackType(category) { return category === 'illusion' ? 'legend' : category; }
+  function supportsLimitBreak(category) { return category === 'legend' || category === 'illusion' || category === 'boss'; }
   const CATALOG_BY_ID = Object.create(null);
   const numbers = new Set();
   const modelIds = new Set();
@@ -29,7 +33,7 @@ function createMoncolleCharacters(data) {
     const character = row.character ?? 'none';
     if (!Number.isFinite(hp) || hp <= 0 || !Number.isFinite(attack) || attack <= 0 || !Object.hasOwn(CHARACTERS, character))
       throw new Error('基礎ステータス・特性を確認してください ' + id);
-    const entry = { id, no, name, category, modelId, hp, attack, character, type: category === 'normal' ? 'normal' : 'legend' };
+    const entry = { id, no, name, category, modelId, hp, attack, character, type: attackType(category) };
     CATALOG_BY_ID[id] = entry;
     categories[category].push(entry);
     return entry;
@@ -62,7 +66,7 @@ function createMoncolleCharacters(data) {
   }
   function mutationMultiplier(c) { return MUTATIONS[c.category]?.[c.mutation]?.[1] || 1; }
   function limitBreakCount(c) {
-    return c.category === 'legend' || c.category === 'illusion'
+    return supportsLimitBreak(c.category)
       ? Math.min(10, Math.max(0, Number(c.limitBreak) || 0))
       : 0;
   }
@@ -94,17 +98,17 @@ function createMoncolleCharacters(data) {
         const power = attackAtLevel(entry, c.mutation, c.level, c.limitBreak, truePair, enemyType);
         return { power, hp:baseHp*growthMultiplier*limitMultiplier, type:entry.type, character:entry.character, name:entry.name, truePair, bossDodge:bossDodgeRate(c) };
       }
-      if (c.category === 'normal' || c.category === 'legend' || c.category === 'illusion') {
-        return { power:0, hp:0, type:c.category === 'normal' ? 'normal' : 'legend', character:'none', name:'未選択', truePair:false, bossDodge:bossDodgeRate(c) };
+      if (Object.hasOwn(categories, c.category)) {
+        return { power:0, hp:0, type:attackType(c.category), character:'none', name:'未選択', truePair:false, bossDodge:bossDodgeRate(c) };
       }
       const attack = Math.max(0,Number(c.manualAttack)||0) * (UNITS[c.manualAttackUnit]||1);
       const enteredHp = Math.max(0,Number(c.manualHp)||0) * (UNITS[c.manualHpUnit]||1);
       const hp = (enteredHp || attack*20) * levelMultiplier;
-      return { power:attack*levelMultiplier, hp, type:c.category === 'normal' ? 'normal' : c.category === 'illusion' || c.category === 'legend' ? 'legend' : c.manualType, character:c.manualCharacter||'none', name:c.manualName||'手動入力', truePair:false, bossDodge:0 };
+      return { power:attack*levelMultiplier, hp, type:c.manualType || 'normal', character:c.manualCharacter||'none', name:c.manualName||'手動入力', truePair:false, bossDodge:0 };
     });
   }
 
-  return { CATALOG, CATALOG_BY_ID, CHARACTERS, MUTATIONS, UNITS, BOSS_MODEL,
+  return { CATALOG, CATALOG_BY_ID, CHARACTERS, MUTATIONS, UNITS, BOSS_MODEL, CATEGORY_LABELS, ATTACK_PERIODS, attackType, supportsLimitBreak,
     catalogEntries, catalogLabel, formatStat, attackAtLevel, resolveParty };
 }
 

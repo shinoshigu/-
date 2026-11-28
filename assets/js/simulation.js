@@ -1,12 +1,10 @@
 function createMoncolleSimulation(rules) {
   'use strict';
-  const { CHARACTERS, BOSS_MODEL } = rules;
+  const { CHARACTERS, BOSS_MODEL, ATTACK_PERIODS } = rules;
 
   const enemyHpAtStage = stage => 30 * Math.pow(1.2, (stage - 1) + Math.floor(stage / 2));
   const HP = Array.from({ length: 75 }, (_, index) => enemyHpAtStage(index + 1));
   const MODEL = {
-    normalPeriod: 1.0,
-    legendPeriod: 3,
     enemyPeriod: 1 / 0.7,
     enemyHitRate: 0.35,
     replacementMin: 3,
@@ -40,6 +38,13 @@ function createMoncolleSimulation(rules) {
   }
 
   function traitFor(character) { return CHARACTERS[character]?.trait || 'none'; }
+  function attackPower(ally) {
+    if (ally.trait === 'lowHpAttack') {
+      const effect = CHARACTERS[ally.character];
+      if (ally.hp <= ally.max * effect.hpThreshold) return ally.power * effect.damage;
+    }
+    return ally.power;
+  }
   function uniqueActiveCharacters(chars) {
     return new Set(chars.filter(c => Number(c.power) > 0 && c.character !== 'none').map(c => c.character));
   }
@@ -67,7 +72,7 @@ function createMoncolleSimulation(rules) {
       const maxHp = Number(c.hp) || power * 20;
       return {
         power, hp:maxHp, max:maxHp,
-        period: c.type === 'legend' ? MODEL.legendPeriod : MODEL.normalPeriod,
+        period: ATTACK_PERIODS[c.type] ?? ATTACK_PERIODS.normal,
         alive: power > 0, token: 0, pos: random() * 10,
         target: -1, character: c.character, trait: traitFor(c.character),
         bossDodge: Math.min(0.95, Math.max(0, Number(c.bossDodge) || 0)),
@@ -154,7 +159,7 @@ function createMoncolleSimulation(rules) {
           : [nearest(enemies, ally.pos)];
         for (const index of targets) {
           const enemy = enemies[index];
-          let damage = ally.power;
+          let damage = attackPower(ally);
           if (ally.jkFirstStrike && !enemy.jkHitBy.has(event.id)) {
             damage *= CHARACTERS.jk.firstStrike;
             enemy.jkHitBy.add(event.id);
@@ -312,7 +317,7 @@ function createMoncolleSimulation(rules) {
     return { gemRows, feedRows, combinedRows };
   }
 
-  return { rankStages, gemMultiplier, stageCount: HP.length, MODEL, BASE_HOURLY, estimate, getCalibration, partyBonus, foodRates };
+  return { rankStages, gemMultiplier, stageCount: HP.length, MODEL, BASE_HOURLY, estimate, getCalibration, partyBonus, foodRates, attackPower };
 }
 
 if (typeof module === 'object' && module.exports) module.exports = createMoncolleSimulation;

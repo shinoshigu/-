@@ -33,12 +33,52 @@ test('図鑑を並べ替えても保存済みIDと通常キャラの基礎値が
   assert.deepEqual(reversed.resolveParty(chars), party);
 });
 
-test('固定した乱数で旧版のステージ63と一致する', () => {
+test('伝説と幻の攻撃間隔を反映したステージ63の戦闘結果', () => {
   const result = simulation.estimate(63, party, 3, 120, 4);
-  assert.deepEqual(result, {
-    kills: 96 / 360, deaths: 6 / 360, jkBoostsPerSecond: 35 / 360,
-    kingProcRate: null, enemyHitRate: 0.3601108033240997,
-  });
+  assert.equal(Math.round(result.kills * 360), 110);
+  assert.equal(Math.round(result.deaths * 360), 5);
+  assert.equal(Math.round(result.jkBoostsPerSecond * 360), 47);
+  assert.equal(result.kingProcRate, null);
+  assert.equal(result.enemyHitRate, 0.3430397727272727);
+});
+
+test('タイプ・ゼロの図鑑値・凸と残HPによる攻撃補正', () => {
+  const slot = { catalogId:'typeZero', category:'boss', mutation:'normal', level:1, limitBreak:0 };
+  const [base] = rules.resolveParty([slot]);
+  assert.equal(base.hp, 864e6);
+  assert.equal(base.power, 43.2e6);
+  assert.equal(base.type, 'boss');
+  const [ten] = rules.resolveParty([{...slot, limitBreak:10}]);
+  const [raid] = rules.resolveParty([{...slot, limitBreak:10}], 'boss');
+  assert.equal(ten.hp, 1296e6);
+  assert.equal(ten.power, 64.8e6);
+  assert.equal(raid.hp, ten.hp);
+  assert.equal(raid.power, base.power);
+  assert.equal(raid.bossDodge, 0.2);
+  for (const unit of [base, ten, raid]) {
+    const ally = {...unit, trait:rules.CHARACTERS[unit.character].trait, max:unit.hp};
+    const half = ally.max / 2;
+    for (const [hp, factor] of [[ally.max, 1], [half, 2], [half-1, 2], [half+1, 1], [ally.max, 1]]) {
+      ally.hp = hp;
+      assert.equal(simulation.attackPower(ally), unit.power * factor);
+    }
+  }
+});
+
+test('ステージ1で各カテゴリが所定の間隔で2撃目を出す', () => {
+  // The enemy has 30 HP. With 15 damage and ample HP, the second hit is the first kill.
+  // With salt=0, the initial attack phase of one ally on stage 1 is the ninth RNG draw.
+  let seed = 2654435761;
+  for (let i = 0; i < 9; i++) { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; }
+  const phase = (seed >>> 0) / 4294967296;
+  for (const [id, period] of [['n01', 1], ['mikon', 2.5], ['lovril', 2.5], ['typeZero', 2]]) {
+    const entry = rules.CATALOG_BY_ID[id];
+    const [unit] = rules.resolveParty([{catalogId:id, category:entry.category, level:1}]);
+    const party = [{...unit, power:15, hp:1e6}];
+    const secondHit = phase * period + period;
+    assert.equal(simulation.estimate(1, party, 1, secondHit - 0.0001).kills, 0, id);
+    assert.equal(simulation.estimate(1, party, 1, secondHit + 0.0001).kills, 1 / (secondHit + 0.0001), id);
+  }
 });
 
 test('餌は46から計上し、討伐数ゼロでも順位計算が完了する', () => {

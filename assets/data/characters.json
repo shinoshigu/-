@@ -101,6 +101,12 @@
       "chance": 0.3,
       "damage": 1.5
     },
+    "typeZero": {
+      "label": "タイプ・ゼロ（自身のHPが50%以下の間、攻撃力2倍）",
+      "trait": "lowHpAttack",
+      "hpThreshold": 0.5,
+      "damage": 2
+    },
     "mikon": {
       "label": "ミコン（ポンジャと同時編成で真の力）",
       "trait": "mikon"
@@ -805,6 +811,14 @@
       "hp": 241100000,
       "attack": 12055000,
       "character": "kubinight"
+    },
+    {
+      "id": "typeZero",
+      "name": "タイプ・ゼロ",
+      "category": "boss",
+      "hp": 864000000,
+      "attack": 43200000,
+      "character": "typeZero"
     }
   ]
 }

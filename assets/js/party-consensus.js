@@ -55,10 +55,10 @@
     const name = row.names[entry.id] || 0;
     const mutation = row.mutations[entry.id] || row.mutations[entry.category];
     const hasForm = Boolean(api.mutations[entry.category]?.length);
-    const canLimit = entry.category !== 'normal';
+    const canLimit = api.supportsLimitBreak(entry.category);
     const conflicts = [];
     if (row.identity && row.identity !== entry.id) conflicts.push('名前・キャラ画像と不一致');
-    if (!canLimit && reliable(row.limit) && row.limit.value > 0) conflicts.push('通常キャラに凸表示があります');
+    if (!canLimit && reliable(row.limit) && row.limit.value > 0) conflicts.push('凸の対象外のキャラに凸表示があります');
     const levelValues = reliable(row.level) ? [row.level.value] :
       row.plausibleLevels?.length ? row.plausibleLevels.map(c=>c.value) : levels;
     const limitValues = !canLimit ? [0] : reliable(row.limit) ? [row.limit.value] : limits;
@@ -110,12 +110,12 @@
     const forms = api.mutations[entry.category] || [{id:'normal', label:'—'}];
     if (forms.length > 1 && !reliable(mutation)) return '';
     const form = forms.length > 1 ? mutation.value : 'normal';
-    const limit = entry.category === 'normal' ? 0 : row.limit?.value;
+    const limit = api.supportsLimitBreak(entry.category) ? row.limit?.value : 0;
     if (limit == null) return '';
     const matches = (m, l, c) => modes.some(p => fits(api.attackAtLevel(entry, m, l, c, p), row.attack));
     const fixes = [];
     for (const l of levels) if (matches(form, l, limit)) fixes.push('Lv' + l);
-    if (entry.category !== 'normal') for (const c of limits) if (matches(form, row.level.value, c)) fixes.push(c + '凸');
+    if (api.supportsLimitBreak(entry.category)) for (const c of limits) if (matches(form, row.level.value, c)) fixes.push(c + '凸');
     for (const m of forms) if (matches(m.id, row.level.value, limit)) fixes.push(m.label);
     return fixes.length ? '他を固定すると ' + fixes.slice(0, 4).join('／') + ' で攻撃力が一致' : '';
   }
@@ -145,7 +145,7 @@
     if (selected) {
       const fields = [
         ['level', 'Lv', row.level],
-        ['limit', '凸', selected.entry.category === 'normal' ? {value:0, quality:1} : row.limit],
+        ['limit', '凸', api.supportsLimitBreak(selected.entry.category) ? row.limit : {value:0, quality:1}],
         ['mutation', '変異', !api.mutations[selected.entry.category] ? {value:'normal', quality:1} : selected.mutation],
       ];
       for (const [key, label, obs] of fields) {
@@ -188,7 +188,7 @@
       detail:(visualLabel?'背景は'+visualLabel+'、':'')+'表示攻撃力は'+form.label+'相当。変異を確認してください'};
   }
 
-  // Enumerate only three roles per slot; the other 93 characters share the same
+  // Enumerate only three roles per slot; all non-pair characters share the same
   // pairing behavior. Attack calculations are cached outside the 3^7 search.
   function resolveParty(api, rows) {
     const prepared = rows.map(row => {
